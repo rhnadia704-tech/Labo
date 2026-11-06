@@ -101,4 +101,52 @@ class ExampleRobolectricTest {
     assertTrue(symlinks.exists())
     assertTrue(xattrs.exists())
   }
+
+  @Test
+  fun `ext4 builder creates valid ext4 image and ext4 extractor unpacks it faithfully`() = kotlinx.coroutines.runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val rootTestDir = File(context.cacheDir, "ext4_roundtrip_test").apply { mkdirs() }
+    val srcDir = File(rootTestDir, "source_system").apply { mkdirs() }
+    val outImg = File(rootTestDir, "test_ext4.img")
+    val extractDir = File(rootTestDir, "extracted_system").apply { mkdirs() }
+
+    // Create realistic system tree
+    val binDir = File(srcDir, "bin").apply { mkdirs() }
+    val etcDir = File(srcDir, "etc").apply { mkdirs() }
+    val shFile = File(binDir, "sh").apply { writeText("#!/system/bin/sh\necho Hello LABO\n") }
+    val propFile = File(etcDir, "build.prop").apply { writeText("ro.build.version.release=15\nro.product.model=LABO-GSI\n") }
+
+    val builder = com.example.core.system.ext4.Ext4Builder(
+      sourceDir = srcDir,
+      outputFile = outImg,
+      volumeLabel = "test_system"
+    )
+
+    val imageSize = builder.build { _, _ -> }
+    assertTrue(outImg.exists())
+    assertTrue(imageSize > 0)
+
+    // Verify EXT4 superblock magic (0xEF53 at offset 1080)
+    java.io.RandomAccessFile(outImg, "r").use { raf ->
+      raf.seek(1080L)
+      val magicLow = raf.read()
+      val magicHigh = raf.read()
+      val magic = (magicHigh shl 8) or magicLow
+      assertEquals(0xEF53, magic)
+    }
+
+    // Now extract with Ext4Extractor
+    val extractor = com.example.core.system.ext4.Ext4Extractor(outImg)
+    val extractedCount = extractor.extractAll(extractDir) { _, _ -> }
+    extractor.close()
+
+    assertTrue(extractedCount >= 2)
+    val extractedSh = File(extractDir, "bin/sh")
+    val extractedProp = File(extractDir, "etc/build.prop")
+
+    assertTrue("bin/sh should exist", extractedSh.exists())
+    assertTrue("etc/build.prop should exist", extractedProp.exists())
+    assertEquals(shFile.readText(), extractedSh.readText())
+    assertEquals(propFile.readText(), extractedProp.readText())
+  }
 }

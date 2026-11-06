@@ -251,48 +251,56 @@ class ForgeEngine(
             }
         }
 
-        log("Lecture des droits (fs_config) et contextes SELinux (file_contexts)...", 0.40f)
-        delay(150)
+        // 2. Lecture des permissions fs_config
+        val fsConfigMap = mutableMapOf<String, com.example.core.system.ext4.Ext4Builder.FsConfigEntry>()
+        val fsConfigFile = File(project.databaseDir, "fs_config")
+        if (fsConfigFile.exists()) {
+            try {
+                fsConfigFile.forEachLine { line ->
+                    val trimmed = line.trim()
+                    if (trimmed.isNotBlank() && !trimmed.startsWith("#")) {
+                        val parts = trimmed.split("\\s+".toRegex())
+                        if (parts.size >= 4) {
+                            val path = parts[0]
+                            val uid = parts[1].toIntOrNull() ?: 0
+                            val gid = parts[2].toIntOrNull() ?: 0
+                            val modeOctal = parts[3].toIntOrNull(8) ?: 0x81A4
+                            val cap = if (parts.size >= 5) parts[4] else "0x0"
+                            fsConfigMap[path] = com.example.core.system.ext4.Ext4Builder.FsConfigEntry(uid, gid, modeOctal, cap)
+                        }
+                    }
+                }
+                log("fs_config chargé : ${fsConfigMap.size} règles de permissions indexées", 0.35f)
+            } catch (e: Exception) {
+                log("Avertissement: lecture partielle fs_config (${e.message})", 0.35f)
+            }
+        }
+
+        // 3. Répertoire source à repacker
+        val sourceDir = if (project.imgExtractDir.exists() && (project.imgExtractDir.listFiles()?.isNotEmpty() == true)) {
+            project.imgExtractDir
+        } else {
+            project.rootDir.listFiles()?.firstOrNull { it.isDirectory && it.name != "database" } ?: project.rootDir
+        }
 
         val targetImgName = "${project.name}_repacked_${originalFormat}.img"
         val outputFile = File(outputDir, targetImgName)
 
-        log("Construction du flux image binaire selon le format initial ($originalFormat)...", 0.60f)
+        log("Construction du système de fichiers EXT4 fidèle à partir de ${sourceDir.name}/...", 0.45f)
 
-        RandomAccessFile(outputFile, "rw").use { raf ->
-            raf.setLength(0L)
+        // 4. Génération de l'image EXT4 réelle (Superblock, Block Groups, Inodes, Extents)
+        val builder = com.example.core.system.ext4.Ext4Builder(
+            sourceDir = sourceDir,
+            outputFile = outputFile,
+            volumeLabel = volumeLabel,
+            fsConfigMap = fsConfigMap
+        )
 
-            val header = ByteArray(4096)
-            if (originalFormat == "erofs") {
-                header[1024] = 0xE2.toByte()
-                header[1025] = 0xE1.toByte()
-                header[1026] = 0xF5.toByte()
-                header[1027] = 0xE0.toByte()
-            } else {
-                // ext4 superblock à offset 1080
-                header[1080] = 0x53.toByte()
-                header[1081] = 0xEF.toByte()
-            }
-            raf.write(header)
-
-            var writtenBytes = 4096L
-            project.imgExtractDir.walkTopDown().forEach { file ->
-                if (file.isFile) {
-                    val buffer = ByteArray(8192)
-                    file.inputStream().use { input ->
-                        var read = input.read(buffer)
-                        while (read != -1 && writtenBytes < 64 * 1024 * 1024) {
-                            raf.write(buffer, 0, read)
-                            writtenBytes += read
-                            read = input.read(buffer)
-                        }
-                    }
-                }
-            }
+        val finalSizeBytes = builder.build { prog, msg ->
+            log(msg, 0.45f + (prog * 0.50f))
         }
 
-        log("Finalisation du superblock et structure de volume...", 0.90f)
-        delay(150)
+        log("Image EXT4 construite avec succès : ${finalSizeBytes / (1024 * 1024)} Mo", 0.98f)
 
         log("REPACK terminé avec succès ! Image créée : ${outputFile.absolutePath} (${outputFile.length()} octets)", 1.0f)
 
