@@ -61,7 +61,8 @@ object SparseConverter {
                 }
 
                 RandomAccessFile(rawOutputFile, "rw").use { outRaf ->
-                    outRaf.setLength(0L)
+                    val expectedSize = totalBlks * blkSz
+                    outRaf.setLength(expectedSize)
                     val chunkHdrBuf = ByteArray(12)
                     var processedBlocks = 0L
 

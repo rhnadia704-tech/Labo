@@ -88,11 +88,11 @@ class Ext4Builder(
         }
         assignInodes(rootNode)
 
-        val totalInodesCount = (nextInode + 64).coerceAtLeast(128L)
+        val BLOCKS_PER_GROUP = 32768L // Standard for 4096-byte blocks
+        val INODES_PER_GROUP = 8192L  // Standard ext4 inode count per group
 
         // 3. Calculate Layout & Blocks
-        // Inode table size in blocks
-        val inodeTableBlocks = ((totalInodesCount * INODE_SIZE) + BLOCK_SIZE - 1) / BLOCK_SIZE
+        val inodeTableBlocks = ((INODES_PER_GROUP * INODE_SIZE) + BLOCK_SIZE - 1) / BLOCK_SIZE
 
         val superblockBlock = 0L // bytes 1024..2047 in block 0
         val groupDescBlock = 1L
@@ -108,7 +108,7 @@ class Ext4Builder(
         fun allocateBlocks(node: BuildNode) {
             if (node.isDirectory) {
                 node.dataBlockStart = currentDataBlock
-                node.dataBlocksCount = 1 // 4096 bytes is enough for hundreds of entries
+                node.dataBlocksCount = 1 // 4096 bytes is enough for directory entries
                 currentDataBlock += node.dataBlocksCount
             } else {
                 val size = node.file.length()
@@ -124,12 +124,13 @@ class Ext4Builder(
         }
         allocateBlocks(rootNode)
 
-        // Add extra free blocks margin for clean filesystem
-        val extraFreeBlocks = 256L
-        val totalBlocksCount = currentDataBlock + extraFreeBlocks
+        val totalBlocksNeeded = currentDataBlock + 256L
+        val numGroups = ((totalBlocksNeeded + BLOCKS_PER_GROUP - 1) / BLOCKS_PER_GROUP).toInt().coerceAtLeast(1)
+        val totalBlocksCount = numGroups * BLOCKS_PER_GROUP
+        val totalInodesCount = numGroups * INODES_PER_GROUP
         val totalImageSizeBytes = totalBlocksCount * BLOCK_SIZE
 
-        onProgress(0.25f, "Structure EXT4 : $totalBlocksCount blocs (Taille finale : ${totalImageSizeBytes / (1024 * 1024)} Mo)")
+        onProgress(0.25f, "Structure EXT4 : $totalBlocksCount blocs ($numGroups groupes de blocs, taille : ${totalImageSizeBytes / (1024 * 1024)} Mo)")
 
         outputFile.parentFile?.mkdirs()
         RandomAccessFile(outputFile, "rw").use { raf ->
@@ -284,21 +285,58 @@ class Ext4Builder(
             raf.seek(inodeTableStartBlock * BLOCK_SIZE)
             raf.write(inodeTableBytes)
 
-            // 6. Write Superblock at offset 1024
-            onProgress(0.90f, "Finalisation du Superblock EXT4 et descripteurs de groupe...")
+            // 6. Write Block Bitmap & Inode Bitmap for Group 0
+            val blockBitmap = ByteArray(BLOCK_SIZE)
+            val usedInGroup0 = currentDataBlock.coerceAtMost(BLOCKS_PER_GROUP).toInt()
+            for (i in 0 until usedInGroup0) {
+                blockBitmap[i / 8] = (blockBitmap[i / 8].toInt() or (1 shl (i % 8))).toByte()
+            }
+            raf.seek(blockBitmapBlock * BLOCK_SIZE)
+            raf.write(blockBitmap)
+
+            val inodeBitmap = ByteArray(BLOCK_SIZE)
+            val usedInodes = nextInode.toInt().coerceAtMost(INODES_PER_GROUP.toInt())
+            for (i in 0 until usedInodes) {
+                inodeBitmap[i / 8] = (inodeBitmap[i / 8].toInt() or (1 shl (i % 8))).toByte()
+            }
+            raf.seek(inodeBitmapBlock * BLOCK_SIZE)
+            raf.write(inodeBitmap)
+
+            // 7. Write Block Group Descriptor Table at block 1
+            val descTableBytes = ByteArray(32 * numGroups)
+            for (g in 0 until numGroups) {
+                val offset = g * 32
+                val buf = ByteBuffer.wrap(descTableBytes, offset, 32).order(ByteOrder.LITTLE_ENDIAN)
+                val blkBitmap = if (g == 0) blockBitmapBlock else (g.toLong() * BLOCKS_PER_GROUP)
+                val inoBitmap = if (g == 0) inodeBitmapBlock else (g.toLong() * BLOCKS_PER_GROUP + 1L)
+                val inoTable = if (g == 0) inodeTableStartBlock else (g.toLong() * BLOCKS_PER_GROUP + 2L)
+
+                buf.putInt(0, blkBitmap.toInt())
+                buf.putInt(4, inoBitmap.toInt())
+                buf.putInt(8, inoTable.toInt())
+                buf.putShort(12, 1000.toShort()) // bg_free_blocks_count_lo
+                buf.putShort(14, INODES_PER_GROUP.toShort()) // bg_free_inodes_count_lo
+                buf.putShort(16, (if (g == 0) 2 else 0).toShort()) // bg_used_dirs_count_lo
+                buf.putShort(18, 0.toShort()) // bg_flags
+            }
+            raf.seek(groupDescBlock * BLOCK_SIZE)
+            raf.write(descTableBytes)
+
+            // 8. Write Superblock at offset 1024
+            onProgress(0.90f, "Finalisation du Superblock EXT4 standard et descripteurs de groupe...")
 
             val sbBuf = ByteBuffer.allocate(1024).order(ByteOrder.LITTLE_ENDIAN)
             sbBuf.putInt(0, totalInodesCount.toInt())  // s_inodes_count
             sbBuf.putInt(4, totalBlocksCount.toInt())  // s_blocks_count_lo
             sbBuf.putInt(8, 0)                        // s_r_blocks_count_lo
-            sbBuf.putInt(12, extraFreeBlocks.toInt()) // s_free_blocks_count_lo
+            sbBuf.putInt(12, (totalBlocksCount - currentDataBlock).toInt()) // s_free_blocks_count_lo
             sbBuf.putInt(16, (totalInodesCount - totalNodes).toInt()) // s_free_inodes_count
             sbBuf.putInt(20, 0)                       // s_first_data_block (0 for 4k blocks)
             sbBuf.putInt(24, 2)                       // s_log_block_size (1024 << 2 = 4096)
             sbBuf.putInt(28, 2)                       // s_log_cluster_size
-            sbBuf.putInt(32, totalBlocksCount.toInt()) // s_blocks_per_group
-            sbBuf.putInt(36, totalBlocksCount.toInt()) // s_clusters_per_group
-            sbBuf.putInt(40, totalInodesCount.toInt()) // s_inodes_per_group
+            sbBuf.putInt(32, BLOCKS_PER_GROUP.toInt()) // s_blocks_per_group = 32768
+            sbBuf.putInt(36, BLOCKS_PER_GROUP.toInt()) // s_clusters_per_group = 32768
+            sbBuf.putInt(40, INODES_PER_GROUP.toInt()) // s_inodes_per_group = 8192
             sbBuf.putInt(44, (System.currentTimeMillis() / 1000).toInt()) // s_mtime
             sbBuf.putInt(48, (System.currentTimeMillis() / 1000).toInt()) // s_wtime
             sbBuf.putShort(56, 0xEF53.toShort())      // s_magic = 0xEF53 (VALID EXT4!)
@@ -315,19 +353,6 @@ class Ext4Builder(
 
             raf.seek(1024L)
             raf.write(sbBuf.array())
-
-            // 7. Write Block Group Descriptor at block 1 (offset 4096)
-            val descBuf = ByteBuffer.allocate(64).order(ByteOrder.LITTLE_ENDIAN)
-            descBuf.putInt(0, blockBitmapBlock.toInt())     // bg_block_bitmap_lo
-            descBuf.putInt(4, inodeBitmapBlock.toInt())     // bg_inode_bitmap_lo
-            descBuf.putInt(8, inodeTableStartBlock.toInt()) // bg_inode_table_lo
-            descBuf.putShort(12, extraFreeBlocks.toShort()) // bg_free_blocks_count_lo
-            descBuf.putShort(14, (totalInodesCount - totalNodes).toShort()) // bg_free_inodes_count_lo
-            descBuf.putShort(16, 2.toShort())               // bg_used_dirs_count_lo
-            descBuf.putShort(18, 0.toShort())               // bg_flags
-
-            raf.seek(groupDescBlock * BLOCK_SIZE)
-            raf.write(descBuf.array())
         }
 
         onProgress(1.0f, "Reconstruction EXT4 terminée avec succès (${outputFile.length() / (1024 * 1024)} Mo)")

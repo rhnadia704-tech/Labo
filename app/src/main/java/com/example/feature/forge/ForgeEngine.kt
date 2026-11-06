@@ -288,19 +288,51 @@ class ForgeEngine(
 
         log("Construction du système de fichiers EXT4 fidèle à partir de ${sourceDir.name}/...", 0.45f)
 
-        // 4. Génération de l'image EXT4 réelle (Superblock, Block Groups, Inodes, Extents)
-        val builder = com.example.core.system.ext4.Ext4Builder(
-            sourceDir = sourceDir,
-            outputFile = outputFile,
-            volumeLabel = volumeLabel,
-            fsConfigMap = fsConfigMap
-        )
-
-        val finalSizeBytes = builder.build { prog, msg ->
-            log(msg, 0.45f + (prog * 0.50f))
+        // Tentative 1 : mke2fs natif si disponible dans l'environnement ou les binaires LABO
+        var nativeSuccess = false
+        val nativeMke2fs = listOf(
+            File(workspaceManager.binDir, "mke2fs").absolutePath,
+            "/system/bin/mke2fs",
+            "/system/xbin/mke2fs",
+            "/vendor/bin/mke2fs",
+            "/usr/sbin/mke2fs"
+        ).firstOrNull { binPath ->
+            try {
+                val f = File(binPath)
+                f.exists() && f.canExecute()
+            } catch (_: Exception) { false }
         }
 
-        log("Image EXT4 construite avec succès : ${finalSizeBytes / (1024 * 1024)} Mo", 0.98f)
+        if (nativeMke2fs != null) {
+            try {
+                log("Utilisation de l'outil binaire natif mke2fs ($nativeMke2fs)...", 0.48f)
+                val mke2fsCmd = "$nativeMke2fs -t ext4 -b 4096 -L \"$volumeLabel\" -d \"${sourceDir.absolutePath}\" \"${outputFile.absolutePath}\""
+                val res = shellExecutor.executeCommand(mke2fsCmd)
+                if (res.exitCode == 0 && outputFile.exists() && outputFile.length() > 0) {
+                    nativeSuccess = true
+                    log("Image EXT4 construite avec succès par mke2fs : ${outputFile.length() / (1024 * 1024)} Mo", 0.95f)
+                } else {
+                    log("mke2fs non supporté ou a échoué (${res.error}), bascule vers Ext4Builder autonome...", 0.50f)
+                }
+            } catch (e: Exception) {
+                log("mke2fs indisponible (${e.message}), bascule vers Ext4Builder autonome...", 0.50f)
+            }
+        }
+
+        // Tentative 2 : Moteur Ext4Builder pur Kotlin (multi-groupes standard, extents et bitmaps)
+        if (!nativeSuccess) {
+            val builder = com.example.core.system.ext4.Ext4Builder(
+                sourceDir = sourceDir,
+                outputFile = outputFile,
+                volumeLabel = volumeLabel,
+                fsConfigMap = fsConfigMap
+            )
+
+            val finalSizeBytes = builder.build { prog, msg ->
+                log(msg, 0.45f + (prog * 0.50f))
+            }
+            log("Image EXT4 construite avec succès via Ext4Builder : ${finalSizeBytes / (1024 * 1024)} Mo", 0.98f)
+        }
 
         log("REPACK terminé avec succès ! Image créée : ${outputFile.absolutePath} (${outputFile.length()} octets)", 1.0f)
 

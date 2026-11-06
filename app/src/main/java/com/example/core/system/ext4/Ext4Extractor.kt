@@ -64,7 +64,8 @@ class Ext4Extractor(private val imageFile: File) : AutoCloseable {
         if (inodeSize == 0) inodeSize = 128
 
         descSize = if (is64Bit) {
-            (buf.getShort(254).toInt() and 0xFFFF).let { if (it >= 64) it else 64 }
+            val dSz = buf.getShort(250).toInt() and 0xFFFF
+            if (dSz in 32..1024) dSz else 64
         } else {
             32
         }
@@ -162,6 +163,13 @@ class Ext4Extractor(private val imageFile: File) : AutoCloseable {
 
         val magic = buf.getShort(0).toInt() and 0xFFFF
         if (magic != 0xF30A) {
+            // Fallback for non-extent inodes (direct block pointers 0..11)
+            for (i in 0 until 12) {
+                val blockNum = buf.getInt(i * 4).toLong() and 0xFFFFFFFFL
+                if (blockNum != 0L) {
+                    result.add(Extent(i.toLong(), 1, blockNum))
+                }
+            }
             return result
         }
 
