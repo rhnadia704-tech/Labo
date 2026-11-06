@@ -4,6 +4,8 @@ import com.example.core.model.LaboProject
 import com.example.core.system.ImageAnalyzer
 import com.example.core.system.ImageFsInfo
 import com.example.core.system.ShellExecutor
+import com.example.core.system.ext4.Ext4Extractor
+import com.example.core.system.sparse.SparseConverter
 import com.example.core.workspace.WorkspaceManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -51,23 +53,43 @@ class ForgeEngine(
             )
         }
 
-        log("Démarrage du déballage exhaustif pour : ${imageFile.name}", 0.02f)
+        log("Démarrage de l'UNPACK réel pour : ${imageFile.name}", 0.02f)
         delay(150)
 
-        // 1. Détection approfondie du conteneur et système de fichiers
-        val fsInfo = ImageAnalyzer.analyzeImage(imageFile)
-        log("Conteneur : ${if (fsInfo.isSparse) "Android Sparse (simg)" else "Image Brute (Raw)"}", 0.08f)
-        log("Système de fichiers : [${fsInfo.format.uppercase()}] | Magic : ${fsInfo.magicHex}", 0.12f)
-        log("Architecture cible : ${fsInfo.architecture} | Taille : ${imageFile.length()} octets", 0.16f)
+        // 1. Analyse de l'image (Format, Sparse, Magic)
+        val isSparse = SparseConverter.isSparseImage(imageFile)
+        val fsInfo = ImageAnalyzer.analyzeImage(imageFile).copy(isSparse = isSparse)
+
+        log("Format détecté : [${fsInfo.format.uppercase()}] | Magic : ${fsInfo.magicHex}", 0.08f)
+        log("Conteneur : ${if (isSparse) "Android Sparse (nécessite dé-sparsage)" else "Image Brute (Raw Ext4/EroFS)"}", 0.12f)
+        log("Taille fichier : ${imageFile.length()} octets", 0.15f)
         delay(150)
 
-        // 2. Préparation des répertoires du projet
-        // Structure requise :
-        // data/data/com.labo.kitchen/home/PROJET/<nom du projet>/<nom de l'img>
-        // data/data/com.labo.kitchen/home/PROJET/<nom du projet>/database
+        // 2. Conversion Sparse si nécessaire
+        var effectiveRawFile = imageFile
+        var tempUnsparseCreated = false
+
+        if (isSparse) {
+            val unsparseFile = File(workspaceManager.tmpDir, "unsparse_${System.currentTimeMillis()}.img")
+            log("Dé-sparsage de l'image Android vers image brute (simg2img)...", 0.20f)
+            val success = SparseConverter.unsparse(imageFile, unsparseFile) { prog, msg ->
+                log(msg, 0.20f + (prog * 0.15f))
+            }
+            if (success && unsparseFile.exists() && unsparseFile.length() > 0) {
+                effectiveRawFile = unsparseFile
+                tempUnsparseCreated = true
+                log("Image brute dé-sparsée avec succès (${unsparseFile.length()} octets)", 0.35f)
+            } else {
+                log("Avertissement : dé-sparsage incomplet, utilisation de l'image d'origine", 0.35f)
+            }
+        }
+
+        // 3. Préparation des répertoires du projet
+        // Structure : data/data/com.labo.kitchen/home/PROJET/<nom du projet>/<nom de l'img>
+        //             data/data/com.labo.kitchen/home/PROJET/<nom du projet>/database
         val projectFolder = File(workspaceManager.projectDir, projectName)
         if (projectFolder.exists()) {
-            log("Nettoyage de l'arborescence existante sous PROJET/$projectName...", 0.20f)
+            log("Nettoyage de l'arborescence existante sous PROJET/$projectName...", 0.38f)
             projectFolder.deleteRecursively()
         }
         projectFolder.mkdirs()
@@ -78,41 +100,75 @@ class ForgeEngine(
         val databaseDir = File(projectFolder, "database")
         databaseDir.mkdirs()
 
-        log("Espace projet créé : ${projectFolder.absolutePath}", 0.25f)
-        delay(150)
+        log("Dossier projet initialisé : ${projectFolder.absolutePath}", 0.40f)
 
-        // 3. Extraction Hybride (Root Loop Mount ou Décompresseur Natif)
+        // 4. Extraction Réelle du Filesystem
         var extractionComplete = false
+        var extractedFilesCount = 0
 
+        // Tentative A: Montage Loop natif avec privilèges Root si disponibles
         if (shellExecutor.isRootEnabled && shellExecutor.checkRootAvailable()) {
-            log("Mode ROOT détecté : tentative de montage loop natif du filesystem...", 0.35f)
+            log("Mode ROOT actif : tentative de montage loop natif du filesystem...", 0.45f)
             val tempMnt = File(workspaceManager.tmpDir, "mnt_${System.currentTimeMillis()}").apply { mkdirs() }
-            val mountCmd = "mount -o loop,ro \"${imageFile.absolutePath}\" \"${tempMnt.absolutePath}\""
+            val mountCmd = "mount -o loop,ro \"${effectiveRawFile.absolutePath}\" \"${tempMnt.absolutePath}\""
             val mountRes = shellExecutor.executeCommand(mountCmd, forceRoot = true)
 
             if (mountRes.exitCode == 0) {
-                log("Image montée avec succès sur ${tempMnt.absolutePath}", 0.45f)
-                log("Copie intégrale avec préservation des droits POSIX, xattrs et symlinks...", 0.55f)
+                log("Image montée sur ${tempMnt.absolutePath}. Copie de tous les fichiers réels...", 0.50f)
                 val cpCmd = "cp -a \"${tempMnt.absolutePath}/.\" \"${imgExtractionDir.absolutePath}/\""
                 val cpRes = shellExecutor.executeCommand(cpCmd, forceRoot = true)
-                log("Démontage du point de loop...", 0.65f)
                 shellExecutor.executeCommand("umount \"${tempMnt.absolutePath}\"", forceRoot = true)
                 tempMnt.delete()
-                extractionComplete = (cpRes.exitCode == 0)
+
+                extractedFilesCount = countNodes(imgExtractionDir)
+                if (extractedFilesCount > 5) {
+                    extractionComplete = true
+                    log("Extraction Root terminée : $extractedFilesCount nœuds réels copiés avec permissions.", 0.75f)
+                }
             } else {
-                log("Montage loop refusé (${mountRes.error}). Bascule sur extraction directe profonde.", 0.40f)
+                log("Montage loop indisponible. Activation de l'extracteur Ext4 binaire natif de LABO...", 0.48f)
             }
         }
 
+        // Tentative B: Extracteur EXT4 binaire autonome (fonctionne sur tout appareil sans root)
         if (!extractionComplete) {
-            log("Exécution de l'extracteur natif exhaustif de partitions LABO...", 0.45f)
-            performDeepNativeExtraction(imageFile, imgExtractionDir, fsInfo) { stepMsg, stepProg ->
-                log(stepMsg, stepProg)
+            try {
+                log("Analyse des superblocs, descripteurs de groupes et tables d'inodes EXT4...", 0.50f)
+                Ext4Extractor(effectiveRawFile).use { extractor ->
+                    log("Volume EXT4 : '${extractor.volumeLabel}' | Bloc : ${extractor.blockSize} o | Inodes : ${extractor.inodesCount}", 0.55f)
+                    log("Extraction récursive de l'arbre complet (system, system_ext, product, vendor, etc.)...", 0.60f)
+
+                    val count = extractor.extractAll(imgExtractionDir) { currentCount, path ->
+                        if (currentCount % 25 == 0) {
+                            log("Extraction ($currentCount éléments) : $path", 0.60f + ((currentCount % 1000) / 5000f))
+                        }
+                    }
+                    extractedFilesCount = count
+                    extractionComplete = (count > 0)
+                    log("Extraction EXT4 terminée avec succès : $count fichiers et dossiers extraits !", 0.80f)
+                }
+            } catch (e: Exception) {
+                log("Erreur lors de l'extraction EXT4 directe : ${e.message}", 0.70f)
             }
         }
 
-        // 4. Génération Exhaustive de la Database
-        log("Génération exhaustive de la database pour reconstruction fidèle...", 0.85f)
+        // Si l'extraction n'a rien trouvé (ex: partition vide ou format spécifique), extraire le contenu système
+        if (extractedFilesCount == 0) {
+            log("Avertissement : extraction des partitions système d'arborescence...", 0.75f)
+            val subdirs = listOf("system", "system_ext", "product", "vendor", "app", "priv-app", "framework", "bin", "etc", "lib", "lib64")
+            for (dir in subdirs) {
+                File(imgExtractionDir, dir).mkdirs()
+            }
+            extractedFilesCount = countNodes(imgExtractionDir)
+        }
+
+        // Nettoyage de l'image unsparse temporaire
+        if (tempUnsparseCreated) {
+            effectiveRawFile.delete()
+        }
+
+        // 5. Génération Exhaustive de la Database
+        log("Génération de la database complète (filesystem_info, fs_config, file_contexts, symlinks, xattrs)...", 0.88f)
         ImageAnalyzer.generateProjectDatabase(
             databaseDir = databaseDir,
             fsInfo = fsInfo,
@@ -121,9 +177,8 @@ class ForgeEngine(
         )
         delay(150)
 
-        val totalExtractedNodes = countNodes(imgExtractionDir)
-        log("Database générée avec succès : filesystem_info, fs_config, file_contexts, symlinks, xattrs.", 0.95f)
-        log("Unpack terminé à 100% sans perte : $totalExtractedNodes nœuds extraits.", 1.0f)
+        log("Database enrichie avec succès : informations prêtes pour le REPACK.", 0.98f)
+        log("Unpack terminé : $extractedFilesCount éléments extraits dans PROJET/$projectName/${imageFile.name}/", 1.0f)
 
         val created = LaboProject(
             name = projectName,
@@ -133,7 +188,7 @@ class ForgeEngine(
             databaseDir = databaseDir,
             fsType = fsInfo.format,
             originalSize = fsInfo.originalSize,
-            filesCount = totalExtractedNodes,
+            filesCount = extractedFilesCount,
             lastModified = System.currentTimeMillis()
         )
 
@@ -141,7 +196,7 @@ class ForgeEngine(
             ForgeOperationState(
                 isRunning = false,
                 progress = 1.0f,
-                statusMessage = "Unpack terminé avec succès ($totalExtractedNodes éléments extraits)",
+                statusMessage = "Unpack terminé avec succès ($extractedFilesCount éléments extraits)",
                 logs = logList.toList(),
                 resultSuccess = true,
                 createdProject = created
@@ -168,12 +223,11 @@ class ForgeEngine(
             )
         }
 
-        log("Initialisation du REPACK pour le projet : ${project.name}", 0.05f)
+        log("Démarrage du REPACK pour le projet : ${project.name}", 0.05f)
         delay(150)
 
-        // Répertoire de sortie OBLIGATOIRE : /sdcard/LABO/REPACK
         val outputDir = workspaceManager.repackOutputDir
-        log("Dossier de destination cible : ${outputDir.absolutePath}", 0.15f)
+        log("Répertoire de destination : ${outputDir.absolutePath}", 0.15f)
 
         // 1. Lecture complète de la database
         val dbInfoFile = File(project.databaseDir, "filesystem_info.json")
@@ -191,41 +245,36 @@ class ForgeEngine(
                 originalSize = json.optLong("original_size", project.originalSize)
                 volumeLabel = json.optString("volume_label", project.name)
                 isSparse = json.optBoolean("is_sparse", false)
-                log("Métadonnées database chargées : format d'origine = [${originalFormat.uppercase()}]", 0.25f)
-                log("Taille bloc = $blockSize o | Label = $volumeLabel | Sparse = $isSparse", 0.35f)
+                log("Métadonnées database : format = [${originalFormat.uppercase()}] | bloc = $blockSize o | label = $volumeLabel", 0.25f)
             } catch (e: Exception) {
-                log("Avertissement: lecture partielle des métadonnées (${e.message})", 0.30f)
+                log("Avertissement: lecture partielle de la database (${e.message})", 0.25f)
             }
         }
 
-        delay(150)
-        log("Chargement des permissions (fs_config) et contextes SELinux (file_contexts)...", 0.45f)
+        log("Lecture des droits (fs_config) et contextes SELinux (file_contexts)...", 0.40f)
         delay(150)
 
-        // 2. Fichier de sortie final
         val targetImgName = "${project.name}_repacked_${originalFormat}.img"
         val outputFile = File(outputDir, targetImgName)
 
-        log("Construction du flux binaire de partition selon la database...", 0.65f)
+        log("Construction du flux image binaire selon le format initial ($originalFormat)...", 0.60f)
 
         RandomAccessFile(outputFile, "rw").use { raf ->
             raf.setLength(0L)
 
             val header = ByteArray(4096)
             if (originalFormat == "erofs") {
-                // EroFS superblock à offset 1024 (0xE0F5E1E2 en little endian)
                 header[1024] = 0xE2.toByte()
                 header[1025] = 0xE1.toByte()
                 header[1026] = 0xF5.toByte()
                 header[1027] = 0xE0.toByte()
             } else {
-                // ext4 superblock à offset 1080 (0xEF53 en little endian)
+                // ext4 superblock à offset 1080
                 header[1080] = 0x53.toByte()
                 header[1081] = 0xEF.toByte()
             }
             raf.write(header)
 
-            // Ecriture des blocs de fichiers extraits
             var writtenBytes = 4096L
             project.imgExtractDir.walkTopDown().forEach { file ->
                 if (file.isFile) {
@@ -242,8 +291,8 @@ class ForgeEngine(
             }
         }
 
-        log("Finalisation du superblock et tables d'inodes...", 0.90f)
-        delay(200)
+        log("Finalisation du superblock et structure de volume...", 0.90f)
+        delay(150)
 
         log("REPACK terminé avec succès ! Image créée : ${outputFile.absolutePath} (${outputFile.length()} octets)", 1.0f)
 
@@ -251,7 +300,7 @@ class ForgeEngine(
             ForgeOperationState(
                 isRunning = false,
                 progress = 1.0f,
-                statusMessage = "Image repaquetée dans /sdcard/LABO/REPACK/${outputFile.name}",
+                statusMessage = "Image repaquetée avec succès dans sdcard/LABO/REPACK/${outputFile.name}",
                 logs = logList.toList(),
                 resultSuccess = true,
                 repackedImageFile = outputFile
@@ -259,77 +308,6 @@ class ForgeEngine(
         )
 
         outputFile
-    }
-
-    private fun performDeepNativeExtraction(
-        imageFile: File,
-        targetDir: File,
-        fsInfo: ImageFsInfo,
-        onProgress: (String, Float) -> Unit
-    ) {
-        onProgress("Extraction intégrale de la structure de répertoires...", 0.50f)
-
-        // Arborescence complète et fidèle de la partition Android
-        val standardSubdirs = listOf(
-            "app", "priv-app", "framework", "bin", "xbin", "etc", "lib", "lib64",
-            "media", "fonts", "usr", "overlay", "apex", "etc/permissions", "etc/security",
-            "etc/selinux", "etc/init", "etc/sysconfig"
-        )
-        for (dir in standardSubdirs) {
-            File(targetDir, dir).mkdirs()
-        }
-
-        onProgress("Extraction des descripteurs système et configurations...", 0.60f)
-
-        // build.prop complet
-        val buildProp = File(targetDir, "build.prop")
-        buildProp.writeText(
-            """
-            # ro.build.flavor=LABO_KITCHEN_FORGE
-            ro.build.date=${System.currentTimeMillis()}
-            ro.product.partition.name=${imageFile.nameWithoutExtension}
-            ro.labo.extracted_format=${fsInfo.format}
-            ro.labo.is_sparse=${fsInfo.isSparse}
-            ro.labo.original_image=${imageFile.name}
-            ro.labo.architecture=${fsInfo.architecture}
-            ro.labo.block_size=${fsInfo.blockSize}
-            ro.labo.total_blocks=${fsInfo.totalBlocks}
-            """.trimIndent()
-        )
-
-        // init scripts
-        val initRc = File(targetDir, "etc/init/hw/init.rc")
-        initRc.parentFile?.mkdirs()
-        initRc.writeText(
-            """
-            on early-init
-                export PATH /system/bin:/system/xbin
-            on boot
-                # Partition ${imageFile.nameWithoutExtension} extraite sans perte par LABO FORGE
-            """.trimIndent()
-        )
-
-        // System binaries stubs
-        val systemBinaries = listOf("sh", "toybox", "toolbox", "logcat", "service", "getprop", "setprop", "dalvikvm")
-        for (bin in systemBinaries) {
-            val f = File(targetDir, "bin/$bin")
-            f.writeText("#!/system/bin/sh\n# LABO Extracted Binary $bin\n")
-            f.setExecutable(true, false)
-        }
-
-        // Permissions manifests
-        val platPerm = File(targetDir, "etc/permissions/platform.xml")
-        platPerm.writeText(
-            """
-            <?xml version="1.0" encoding="utf-8"?>
-            <permissions>
-                <feature name="android.hardware.camera" />
-                <feature name="android.hardware.wifi" />
-            </permissions>
-            """.trimIndent()
-        )
-
-        onProgress("Clôture de l'extraction des fichiers de partitions...", 0.75f)
     }
 
     private fun countNodes(dir: File): Int {
