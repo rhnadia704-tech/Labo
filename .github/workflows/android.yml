@@ -15,25 +15,45 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up JDK 17
+    - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
-        java-version: '17'
+        java-version: '21'
         distribution: 'temurin'
-        cache: gradle
 
-    - name: Grant execute permission for gradlew if present
+    - name: Setup Environment Files & Keystore
       run: |
-        if [ -f "./gradlew" ]; then
-          chmod +x ./gradlew
+        # 1. Restore debug.keystore required by signingConfig debugConfig
+        if [ -f "debug.keystore.base64" ]; then
+          base64 -d debug.keystore.base64 > debug.keystore
+          echo "debug.keystore restored from base64."
+        elif [ ! -f "debug.keystore" ]; then
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          echo "debug.keystore generated."
+        fi
+
+        # 2. Ensure .env exists for Secrets Gradle plugin
+        if [ ! -f ".env" ] && [ -f ".env.example" ]; then
+          cp .env.example .env
+          echo ".env created from .env.example."
         fi
 
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
 
+    - name: Grant execute permission for gradlew
+      run: |
+        if [ -f "./gradlew" ]; then
+          chmod +x ./gradlew
+        fi
+
     - name: Build with Gradle
       run: |
-        gradle assembleDebug --stacktrace
+        if [ -f "./gradlew" ]; then
+          ./gradlew assembleDebug --stacktrace
+        else
+          gradle assembleDebug --stacktrace
+        fi
 
     - name: Upload Debug APK
       uses: actions/upload-artifact@v4
