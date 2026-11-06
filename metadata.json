@@ -1,0 +1,6 @@
+{
+  "name": "LABO",
+  "description": "Environnement modulaire et Android Kitchen avec explorateur de fichiers, moteur FORGE et extensions Labx.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
