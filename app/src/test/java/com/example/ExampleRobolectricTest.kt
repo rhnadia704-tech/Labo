@@ -2,9 +2,11 @@ package com.example
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.example.core.archive.ArchiveManager
 import com.example.core.system.ImageAnalyzer
 import com.example.core.workspace.WorkspaceManager
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -34,6 +36,38 @@ class ExampleRobolectricTest {
     assertTrue(workspaceManager.extensionsDir.exists())
     assertTrue(workspaceManager.projectDir.exists())
     assertTrue(workspaceManager.tmpDir.exists())
+    assertTrue(workspaceManager.trashDir.exists())
+  }
+
+  @Test
+  fun `workspace trash system moves and restores files`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val workspaceManager = WorkspaceManager(context)
+
+    val testFile = File(context.cacheDir, "test_file.txt")
+    testFile.writeText("Contenu test LABO")
+
+    assertTrue(testFile.exists())
+    workspaceManager.moveToTrash(testFile)
+
+    assertFalse(testFile.exists())
+    val trashItems = workspaceManager.getTrashItems()
+    assertTrue(trashItems.isNotEmpty())
+
+    val item = trashItems.first()
+    assertEquals("test_file.txt", item.name)
+
+    workspaceManager.restoreFromTrash(item)
+    assertTrue(testFile.exists())
+  }
+
+  @Test
+  fun `archive manager correctly identifies archive extensions`() {
+    assertTrue(ArchiveManager.isArchiveFile(File("app-release.apk")))
+    assertTrue(ArchiveManager.isArchiveFile(File("rom_update.zip")))
+    assertTrue(ArchiveManager.isArchiveFile(File("system.tar")))
+    assertFalse(ArchiveManager.isArchiveFile(File("system.img")))
+    assertFalse(ArchiveManager.isArchiveFile(File("build.prop")))
   }
 
   @Test
@@ -51,16 +85,20 @@ class ExampleRobolectricTest {
     ImageAnalyzer.generateProjectDatabase(
       databaseDir = databaseDir,
       fsInfo = fsInfo,
-      extractedFiles = emptyList(),
+      extractedRoot = tempDir,
       targetPartitionName = "system"
     )
 
     val infoJson = File(databaseDir, "filesystem_info.json")
     val fsConfig = File(databaseDir, "fs_config")
     val fileContexts = File(databaseDir, "file_contexts")
+    val symlinks = File(databaseDir, "symlinks.json")
+    val xattrs = File(databaseDir, "xattrs.json")
 
     assertTrue(infoJson.exists())
     assertTrue(fsConfig.exists())
     assertTrue(fileContexts.exists())
+    assertTrue(symlinks.exists())
+    assertTrue(xattrs.exists())
   }
 }

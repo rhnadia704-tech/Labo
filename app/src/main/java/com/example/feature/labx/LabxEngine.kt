@@ -217,7 +217,7 @@ class LabxEngine(
                     requiresFilePicker = actObj.optBoolean("requiresFilePicker", false),
                     filePickerTarget = actObj.optString("filePickerTarget", "file"),
                     allowedExtensions = allowedExtList,
-                    script = actObj.optString("script", null)
+                    script = if (actObj.has("script")) actObj.getString("script") else null
                 )
             )
         }

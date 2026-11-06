@@ -2,36 +2,34 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Primary & Brand Colors
-val LaboCyanPrimary = Color(0xFF00E5FF)
-val LaboCyanContainer = Color(0xFF004D56)
-val LaboOnCyanContainer = Color(0xFF80F2FF)
+// iOS-inspired Material 3 Palette
+// Vibrant yet refined Accent Colors (iOS Azure Blue, Emerald Green, Amber, Coral Red)
+val IosBlueAccent = Color(0xFF007AFF)
+val IosBlueDarkAccent = Color(0xFF0A84FF)
+val IosGreenAccent = Color(0xFF34C759)
+val IosOrangeAccent = Color(0xFFFF9500)
+val IosRedAccent = Color(0xFFFF3B30)
+val IosPurpleAccent = Color(0xFFAF52DE)
+val IosTealAccent = Color(0xFF5AC8FA)
 
-val LaboIndigoPrimary = Color(0xFF3D5AFE)
-val LaboIndigoContainer = Color(0xFF1A237E)
-val LaboOnIndigoContainer = Color(0xFFC5CAE9)
+// Dark Theme: Deep Soft Slate & Carbon Glass
+val IosDarkBackground = Color(0xFF070B12)
+val IosDarkSurface = Color(0xFF101724)
+val IosDarkSurfaceElevated = Color(0xFF182335)
+val IosDarkCard = Color(0xFF141D2D)
+val IosDarkBorder = Color(0xFF26354D)
 
-// Dark Slate / Carbon Surfaces
-val LaboDarkBackground = Color(0xFF0B0F17)
-val LaboDarkSurface = Color(0xFF131B26)
-val LaboDarkSurfaceVariant = Color(0xFF1E293B)
-val LaboDarkBorder = Color(0xFF334155)
+val IosDarkOnBackground = Color(0xFFF2F5FA)
+val IosDarkOnSurface = Color(0xFFE6ECF5)
+val IosDarkOnSurfaceVariant = Color(0xFF8F9FB5)
 
-val LaboDarkOnBackground = Color(0xFFF1F5F9)
-val LaboDarkOnSurface = Color(0xFFE2E8F0)
-val LaboDarkOnSurfaceVariant = Color(0xFF94A3B8)
+// Light Theme: Clean Pearl & Soft Porcelain
+val IosLightBackground = Color(0xFFF2F4F8)
+val IosLightSurface = Color(0xFFFFFFFF)
+val IosLightSurfaceElevated = Color(0xFFF8FAFC)
+val IosLightCard = Color(0xFFFFFFFF)
+val IosLightBorder = Color(0xFFE2E8F0)
 
-// Light High-Tech Surfaces
-val LaboLightBackground = Color(0xFFF8FAFC)
-val LaboLightSurface = Color(0xFFFFFFFF)
-val LaboLightSurfaceVariant = Color(0xFFF1F5F9)
-val LaboLightBorder = Color(0xFFCBD5E1)
-
-val LaboLightOnBackground = Color(0xFF0F172A)
-val LaboLightOnSurface = Color(0xFF1E293B)
-val LaboLightOnSurfaceVariant = Color(0xFF64748B)
-
-// Accents
-val LaboSuccessGreen = Color(0xFF10B981)
-val LaboWarningAmber = Color(0xFFF59E0B)
-val LaboDangerRed = Color(0xFFEF4444)
+val IosLightOnBackground = Color(0xFF0D1420)
+val IosLightOnSurface = Color(0xFF162030)
+val IosLightOnSurfaceVariant = Color(0xFF6B7A90)

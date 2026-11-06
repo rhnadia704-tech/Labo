@@ -1,7 +1,5 @@
 package com.example.ui.home
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,29 +16,25 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Dataset
-import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.FolderSpecial
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SdCard
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DrawerValue
@@ -56,8 +50,6 @@ import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -73,28 +65,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.core.model.FileItem
+import androidx.compose.ui.unit.sp
 import com.example.core.model.LaboProject
 import com.example.core.model.LabxManifest
 import com.example.core.model.ThemeMode
 import com.example.core.system.ShellExecutor
-import com.example.core.ui.LaboButton
-import com.example.core.ui.LaboButtonStyle
 import com.example.core.ui.UniversalFilePickerModal
-import com.example.core.ui.formatFileSize
 import com.example.core.workspace.WorkspaceManager
 import com.example.feature.labx.LabxEngine
 import com.example.ui.drawer.SettingsModal
 import kotlinx.coroutines.launch
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -105,16 +93,16 @@ fun HomeScreen(
     currentTheme: ThemeMode,
     onThemeChange: (ThemeMode) -> Unit,
     onOpenForge: () -> Unit,
-    onOpenLabx: (LabxManifest) -> Unit
+    onOpenLabx: (LabxManifest) -> Unit,
+    onOpenFileManager: (File, String) -> Unit,
+    onOpenTrash: () -> Unit
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // State
     var installedExtensions by remember { mutableStateOf<List<LabxManifest>>(emptyList()) }
     var projectsList by remember { mutableStateOf<List<LaboProject>>(emptyList()) }
-    var selectedBottomTab by remember { mutableIntStateOf(0) } // 0: Sdcard, 1: PROJET
     var showSettingsModal by remember { mutableStateOf(false) }
     var showPlusLabxPicker by remember { mutableStateOf(false) }
     var isRootActive by remember { mutableStateOf(shellExecutor.isRootEnabled) }
@@ -135,72 +123,69 @@ fun HomeScreen(
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.width(300.dp)
+                modifier = Modifier.width(310.dp)
             ) {
                 // Drawer Header
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))
-                        .padding(20.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                                    MaterialTheme.colorScheme.surface
+                                )
+                            )
+                        )
+                        .padding(22.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .size(44.dp)
-                                .clip(RoundedCornerShape(12.dp))
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(14.dp))
                                 .background(MaterialTheme.colorScheme.primary),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = "L",
-                                style = MaterialTheme.typography.titleLarge,
+                                style = MaterialTheme.typography.headlineMedium,
                                 fontWeight = FontWeight.Black,
                                 color = MaterialTheme.colorScheme.onPrimary
                             )
                         }
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(14.dp))
                         Column {
                             Text(
                                 text = "LABO",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Black,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
                                 text = "Kitchen & Labx Hub",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = "Espace : /data/data/com.labo.kitchen/home",
+                        text = "/data/data/com.labo.kitchen/home",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                // Menu Item: PLUS (Ajouter un Labx via le gestionnaire popup)
+                // Menu Item 1: Plus (+)
                 NavigationDrawerItem(
-                    label = {
-                        Text(
-                            text = "Plus (Ajouter un Labx)",
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    },
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    },
+                    label = { Text("Plus (Ajouter un Labx)", fontWeight = FontWeight.SemiBold) },
+                    icon = { Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                     selected = false,
                     onClick = {
                         coroutineScope.launch {
@@ -208,28 +193,29 @@ fun HomeScreen(
                             showPlusLabxPicker = true
                         }
                     },
-                    colors = NavigationDrawerItemDefaults.colors(
-                        unselectedContainerColor = Color.Transparent
-                    ),
-                    modifier = Modifier
-                        .padding(horizontal = 12.dp)
-                        .testTag("drawer_item_plus")
+                    colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent),
+                    modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_item_plus")
                 )
 
-                // Menu Item: PARAMÈTRES
+                // Menu Item 2: Corbeille
                 NavigationDrawerItem(
-                    label = {
-                        Text(
-                            text = "Paramètres",
-                            fontWeight = FontWeight.SemiBold
-                        )
+                    label = { Text("Corbeille", fontWeight = FontWeight.SemiBold) },
+                    icon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                    selected = false,
+                    onClick = {
+                        coroutineScope.launch {
+                            drawerState.close()
+                            onOpenTrash()
+                        }
                     },
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = null
-                        )
-                    },
+                    colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent),
+                    modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_item_trash")
+                )
+
+                // Menu Item 3: Paramètres
+                NavigationDrawerItem(
+                    label = { Text("Paramètres", fontWeight = FontWeight.SemiBold) },
+                    icon = { Icon(Icons.Default.Settings, contentDescription = null) },
                     selected = false,
                     onClick = {
                         coroutineScope.launch {
@@ -237,12 +223,8 @@ fun HomeScreen(
                             showSettingsModal = true
                         }
                     },
-                    colors = NavigationDrawerItemDefaults.colors(
-                        unselectedContainerColor = Color.Transparent
-                    ),
-                    modifier = Modifier
-                        .padding(horizontal = 12.dp)
-                        .testTag("drawer_item_settings")
+                    colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent),
+                    modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_item_settings")
                 )
             }
         }
@@ -264,7 +246,7 @@ fun HomeScreen(
                                 color = MaterialTheme.colorScheme.primary
                             )
 
-                            // Root & status pill
+                            // Status badge pill
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
@@ -300,9 +282,7 @@ fun HomeScreen(
                             Icon(imageVector = Icons.Default.Menu, contentDescription = "Menu latéral")
                         }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    )
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
                 )
             }
         ) { innerPadding ->
@@ -310,115 +290,120 @@ fun HomeScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = 24.dp)
             ) {
-                // Section 1: Carousel horizontal des fonctionnalités
-                Text(
-                    text = "FONCTIONNALITÉS & EXTENSIONS",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp)
-                )
+                // Section 1: Hero Carousel Header
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "FONCTIONNALITÉS",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = "${1 + installedExtensions.size} actives",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
 
+                // HERO CAROUSEL
                 LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    // Feature 1: FORGE (Built-in kitchen engine)
+                    // Hero 1: FORGE
                     item {
-                        FeatureCarouselCard(
+                        HeroCarouselCard(
                             title = "FORGE",
-                            subtitle = "Moteur Ext4 & EroFS",
-                            description = "Déballer (UNPACK) et repacker (REPACK) des images système avec base de données.",
+                            tagline = "Android Partition Kitchen",
+                            description = "Déballage complet (UNPACK) et reconstruction (REPACK) d'images ext4 et erofs sans perte d'information.",
                             icon = Icons.Default.Build,
-                            isCore = true,
+                            gradientColors = listOf(Color(0xFF007AFF), Color(0xFF0A84FF)),
+                            badge = "INTÉGRÉ",
                             onClick = onOpenForge,
-                            testTag = "carousel_card_forge"
+                            testTag = "hero_card_forge"
                         )
                     }
 
-                    // Feature 2..N: Installed Labx extensions
-                    items(installedExtensions) { ext ->
-                        FeatureCarouselCard(
+                    // Hero 2..N: Extensions Labx
+                    itemsIndexed(installedExtensions) { _, ext ->
+                        HeroCarouselCard(
                             title = ext.name,
-                            subtitle = "Extension Labx v${ext.version}",
+                            tagline = "Extension Labx v${ext.version}",
                             description = ext.description.ifBlank { "Module additionnel LABO" },
                             icon = Icons.Default.Extension,
-                            isCore = false,
+                            gradientColors = listOf(Color(0xFF5856D6), Color(0xFF34C759)),
+                            badge = ext.layout.name,
                             onClick = { onOpenLabx(ext) },
-                            testTag = "carousel_card_labx_${ext.id}"
+                            testTag = "hero_card_labx_${ext.id}"
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(28.dp))
 
-                // Section 2: Bottom Navigation Tabs (Sdcard / PROJET)
-                TabRow(
-                    selectedTabIndex = selectedBottomTab,
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.primary,
+                // Section 2: Storage & Projects Section Title
+                Text(
+                    text = "ESPACES DE TRAVAIL & STOCKAGE",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    letterSpacing = 1.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // TWO DISTINCT DEDICATED CARDS: Sdcard & PROJET
+                Column(
                     modifier = Modifier
-                        .padding(horizontal = 16.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    Tab(
-                        selected = selectedBottomTab == 0,
-                        onClick = { selectedBottomTab = 0 },
-                        text = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.SdCard, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Sdcard", fontWeight = FontWeight.Bold)
-                            }
-                        },
-                        modifier = Modifier.testTag("tab_sdcard")
-                    )
-                    Tab(
-                        selected = selectedBottomTab == 1,
+                    // Card 1: Sdcard (Mémoire Interne)
+                    StorageWorkspaceCard(
+                        title = "Sdcard",
+                        subtitle = "Mémoire Interne (/sdcard)",
+                        description = "Parcourir la mémoire de l'appareil, ouvrir des archives (ZIP, RAR, 7Z, APK) façon ZArchiver, copier et manipuler des fichiers.",
+                        icon = Icons.Default.SdCard,
+                        iconTint = Color(0xFF007AFF),
+                        badgeText = "Stockage",
                         onClick = {
-                            selectedBottomTab = 1
-                            refreshAll()
+                            onOpenFileManager(workspaceManager.sdcardDir, "Mémoire Interne (Sdcard)")
                         },
-                        text = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.FolderSpecial, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("PROJET (${projectsList.size})", fontWeight = FontWeight.Bold)
-                            }
-                        },
-                        modifier = Modifier.testTag("tab_projet")
+                        testTag = "card_workspace_sdcard"
                     )
-                }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Tab Content
-                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    if (selectedBottomTab == 0) {
-                        // SDCARD VIEW
-                        SdcardBrowserView(
-                            sdcardRoot = workspaceManager.sdcardDir
-                        )
-                    } else {
-                        // PROJET VIEW
-                        ProjectListView(
-                            projects = projectsList,
-                            onOpenForgeRepack = { onOpenForge() },
-                            onDeleteProject = { projName ->
-                                workspaceManager.deleteProject(projName)
-                                refreshAll()
-                            }
-                        )
-                    }
+                    // Card 2: PROJET (Projets Kitchen)
+                    StorageWorkspaceCard(
+                        title = "PROJET",
+                        subtitle = "home/PROJET/ (${projectsList.size} projet(s))",
+                        description = "Ouvrir et explorer chaque projet déballé par FORGE, naviguer dans tous les dossiers, examiner et modifier les databases.",
+                        icon = Icons.Default.FolderSpecial,
+                        iconTint = Color(0xFF34C759),
+                        badgeText = "${projectsList.size} PROJET(S)",
+                        onClick = {
+                            onOpenFileManager(workspaceManager.projectDir, "Projets Kitchen (PROJET)")
+                        },
+                        testTag = "card_workspace_projet"
+                    )
                 }
             }
         }
     }
 
-    // Plus (+) File Picker Modal (for adding a .labx extension from sdcard)
+    // Plus (+) File Picker Modal (for installing a .labx file from sdcard)
     if (showPlusLabxPicker) {
         UniversalFilePickerModal(
             initialDir = workspaceManager.sdcardDir,
@@ -474,33 +459,34 @@ fun HomeScreen(
     }
 }
 
+/**
+ * Panoramic Hero Carousel Card with iOS-inspired vibrant accenting
+ */
 @Composable
-private fun FeatureCarouselCard(
+private fun HeroCarouselCard(
     title: String,
-    subtitle: String,
+    tagline: String,
     description: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    isCore: Boolean,
+    icon: ImageVector,
+    gradientColors: List<Color>,
+    badge: String,
     onClick: () -> Unit,
     testTag: String
 ) {
     Card(
         onClick = onClick,
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isCore) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-            else MaterialTheme.colorScheme.surface
-        ),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = CardDefaults.outlinedCardBorder(),
         modifier = Modifier
-            .width(260.dp)
-            .height(150.dp)
+            .width(290.dp)
+            .height(180.dp)
             .testTag(testTag)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
+                .padding(18.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
@@ -511,22 +497,14 @@ private fun FeatureCarouselCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(
-                                if (isCore) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.secondary
-                            ),
+                            .size(42.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Brush.linearGradient(gradientColors)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Icon(imageVector = icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
                     }
-                    Spacer(modifier = Modifier.width(10.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
                             text = title,
@@ -536,16 +514,24 @@ private fun FeatureCarouselCard(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = subtitle,
+                            text = tagline,
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+
+                Text(
+                    text = badge,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f))
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             }
 
@@ -558,293 +544,117 @@ private fun FeatureCarouselCard(
             )
 
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.End,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Ouvrir",
-                    style = MaterialTheme.typography.labelSmall,
+                    text = "Lancer",
+                    style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SdcardBrowserView(sdcardRoot: File) {
-    var currentDir by remember { mutableStateOf(sdcardRoot) }
-    var fileItems by remember { mutableStateOf<List<FileItem>>(emptyList()) }
-
-    fun refresh(dir: File) {
-        currentDir = dir
-        val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
-        val list = dir.listFiles()?.toList() ?: emptyList()
-        fileItems = list.map { file ->
-            FileItem(
-                file = file,
-                name = file.name,
-                path = file.absolutePath,
-                isDirectory = file.isDirectory,
-                sizeBytes = if (file.isFile) file.length() else 0L,
-                formattedSize = if (file.isFile) formatFileSize(file.length()) else "Dossier",
-                formattedDate = dateFormat.format(Date(file.lastModified())),
-                extension = file.extension.lowercase()
-            )
-        }.sortedWith(
-            compareBy<FileItem> { !it.isDirectory }.thenBy { it.name.lowercase() }
-        )
-    }
-
-    LaunchedEffect(currentDir) {
-        refresh(currentDir)
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp)
-    ) {
-        // Path breadcrumbs
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                onClick = {
-                    val p = currentDir.parentFile
-                    if (p != null && p.canRead()) refresh(p)
-                },
-                enabled = currentDir.parentFile != null && currentDir.parentFile?.canRead() == true,
-                modifier = Modifier.size(32.dp)
-            ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Parent",
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(18.dp)
                 )
             }
-
-            Text(
-                text = currentDir.absolutePath,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f).padding(horizontal = 4.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        LazyColumn(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            if (fileItems.isEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier.fillMaxWidth().padding(32.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Dossier vide ou accès non accordé",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            } else {
-                items(fileItems) { item ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                if (item.isDirectory) refresh(item.file)
-                            }
-                            .padding(vertical = 8.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = if (item.isDirectory) Icons.Default.Folder else Icons.Default.Description,
-                            contentDescription = null,
-                            tint = if (item.isDirectory) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = item.name,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = if (item.isDirectory) FontWeight.SemiBold else FontWeight.Normal,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = "${item.formattedSize} • ${item.formattedDate}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
-                        thickness = 0.5.dp
-                    )
-                }
-            }
         }
     }
 }
 
+/**
+ * Large dedicated Workspace Cards for Sdcard and PROJET
+ */
 @Composable
-private fun ProjectListView(
-    projects: List<LaboProject>,
-    onOpenForgeRepack: () -> Unit,
-    onDeleteProject: (String) -> Unit
+private fun StorageWorkspaceCard(
+    title: String,
+    subtitle: String,
+    description: String,
+    icon: ImageVector,
+    iconTint: Color,
+    badgeText: String,
+    onClick: () -> Unit,
+    testTag: String
 ) {
-    if (projects.isEmpty()) {
-        Box(
+    Card(
+        onClick = onClick,
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = CardDefaults.outlinedCardBorder(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(testTag)
+    ) {
+        Row(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(32.dp),
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    imageVector = Icons.Default.FolderSpecial,
-                    contentDescription = null,
-                    modifier = Modifier.size(48.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(8.dp))
+            Box(
+                modifier = Modifier
+                    .size(54.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(iconTint.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(imageVector = icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(30.dp))
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = badgeText,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(iconTint.copy(alpha = 0.15f))
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                        color = iconTint
+                    )
+                }
+
                 Text(
-                    text = "Aucun projet sous home/PROJET",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    text = subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
                 )
+
                 Spacer(modifier = Modifier.height(4.dp))
+
                 Text(
-                    text = "Utilisez l'option UNPACK de FORGE pour déballer une image système et initialiser un projet.",
+                    text = description,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 24.dp)
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
-        }
-    } else {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(projects) { proj ->
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = CardDefaults.outlinedCardBorder(),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(32.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(MaterialTheme.colorScheme.primaryContainer),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Dataset,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text(
-                                        text = proj.name,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = "Partition : ${proj.imgName}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
 
-                            // Format badge
-                            Text(
-                                text = proj.fsType.uppercase(),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(MaterialTheme.colorScheme.secondaryContainer)
-                                    .padding(horizontal = 8.dp, vertical = 2.dp),
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                        }
+            Spacer(modifier = Modifier.width(8.dp))
 
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Path details
-                        Text(
-                            text = "Unpack : PROJET/${proj.name}/${proj.imgName}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "Database : PROJET/${proj.name}/database",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "Fichiers extraits : ${proj.filesCount} nœuds",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            LaboButton(
-                                text = "Supprimer",
-                                onClick = { onDeleteProject(proj.name) },
-                                style = LaboButtonStyle.DANGER,
-                                testTag = "delete_project_${proj.name}"
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            LaboButton(
-                                text = "Repacker dans FORGE",
-                                onClick = onOpenForgeRepack,
-                                icon = Icons.Default.Build,
-                                style = LaboButtonStyle.PRIMARY,
-                                testTag = "repack_project_${proj.name}"
-                            )
-                        }
-                    }
-                }
-            }
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

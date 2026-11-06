@@ -1,7 +1,5 @@
 package com.example.ui.drawer
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +24,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.FolderSpecial
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.RestoreFromTrash
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
@@ -41,10 +40,13 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -74,6 +76,7 @@ fun SettingsModal(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val coroutineScope = rememberCoroutineScope()
+    var trashEnabled by remember { mutableStateOf(workspaceManager.isTrashEnabled) }
 
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
@@ -84,7 +87,7 @@ fun SettingsModal(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .fillMaxHeight(0.88f)
                 .padding(horizontal = 20.dp)
         ) {
             // Header
@@ -113,7 +116,7 @@ fun SettingsModal(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -156,7 +159,62 @@ fun SettingsModal(
                     }
                 }
 
-                // 2. Privilèges Système
+                // 2. Gestionnaire de Fichiers & Corbeille
+                item {
+                    Text(
+                        text = "GESTIONNAIRE & CORBEILLE",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                    Icon(
+                                        imageVector = Icons.Default.RestoreFromTrash,
+                                        contentDescription = null,
+                                        tint = if (trashEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = "Activer la Corbeille",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Text(
+                                            text = if (trashEnabled) "Déplace les fichiers dans la corbeille avant suppression définitive" else "Suppression directe et irréversible",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                Switch(
+                                    checked = trashEnabled,
+                                    onCheckedChange = {
+                                        trashEnabled = it
+                                        workspaceManager.setTrashEnabled(it)
+                                    },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = MaterialTheme.colorScheme.primary,
+                                        checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 3. Privilèges Système
                 item {
                     Text(
                         text = "PRIVILÈGES ET PERMISSIONS",
@@ -166,16 +224,16 @@ fun SettingsModal(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Card(
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(14.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                     ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
+                        Column(modifier = Modifier.padding(14.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                                     Icon(
                                         imageVector = Icons.Default.Security,
                                         contentDescription = null,
@@ -237,20 +295,14 @@ fun SettingsModal(
                     }
                 }
 
-                // 3. Gestionnaire d'Extensions LABX (installées & désinstallation)
+                // 4. Extensions LABX installées
                 item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "EXTENSIONS LABX INSTALLÉES (${installedExtensions.size})",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
+                    Text(
+                        text = "EXTENSIONS LABX INSTALLÉES (${installedExtensions.size})",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
 
                 if (installedExtensions.isEmpty()) {
@@ -262,7 +314,7 @@ fun SettingsModal(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "Aucune extension installée.\nUtilisez le bouton '+' du menu pour en ajouter une.",
+                                text = "Aucune extension installée.\nUtilisez le bouton '+' du menu latéral pour en ajouter une.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -271,7 +323,7 @@ fun SettingsModal(
                 } else {
                     items(installedExtensions) { ext ->
                         Card(
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(14.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
                             border = CardDefaults.outlinedCardBorder()
                         ) {
@@ -348,9 +400,7 @@ private fun ThemeOptionCard(
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
         ),
-        border = CardDefaults.outlinedCardBorder(
-            enabled = true
-        )
+        border = CardDefaults.outlinedCardBorder(enabled = true)
     ) {
         Column(
             modifier = Modifier

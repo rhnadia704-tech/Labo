@@ -68,6 +68,7 @@ import androidx.compose.ui.unit.sp
 import com.example.core.model.LaboProject
 import com.example.core.system.ImageAnalyzer
 import com.example.core.system.ImageFsInfo
+import com.example.core.system.ShellExecutor
 import com.example.core.ui.LaboButton
 import com.example.core.ui.LaboButtonStyle
 import com.example.core.ui.LaboCard
@@ -81,11 +82,12 @@ import java.io.File
 @Composable
 fun ForgeScreen(
     workspaceManager: WorkspaceManager,
+    shellExecutor: ShellExecutor,
     onNavigateBack: () -> Unit,
     onOpenProject: (LaboProject) -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
-    val engine = remember { ForgeEngine(workspaceManager) }
+    val engine = remember { ForgeEngine(workspaceManager, shellExecutor) }
 
     var selectedTab by remember { mutableIntStateOf(0) } // 0: UNPACK, 1: REPACK
 
@@ -164,7 +166,7 @@ fun ForgeScreen(
                 contentColor = MaterialTheme.colorScheme.primary,
                 modifier = Modifier
                     .clip(RoundedCornerShape(12.dp))
-                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
             ) {
                 Tab(
                     selected = selectedTab == 0,
@@ -195,7 +197,7 @@ fun ForgeScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Main Content Area based on Tab
             if (selectedTab == 0) {
@@ -241,6 +243,7 @@ fun ForgeScreen(
                         selectedProject = it
                         repackDropdownExpanded = false
                     },
+                    repackOutputFolder = workspaceManager.repackOutputDir.absolutePath,
                     onStartRepack = {
                         val proj = selectedProject
                         if (proj != null && !opState.isRunning) {
@@ -256,7 +259,7 @@ fun ForgeScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Live Operation Progress & Console Logs
             AnimatedVisibility(visible = opState.isRunning || opState.logs.isNotEmpty()) {
@@ -296,24 +299,24 @@ private fun UnpackView(
     isRunning: Boolean
 ) {
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = CardDefaults.outlinedCardBorder()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = "Déballage d'Image Système",
+                text = "Déballage Intégral d'Image Système",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "Extrait automatiquement les images ext4 et erofs vers un PROJET avec sa database.",
+                text = "Extrait 100% du contenu sans perte vers PROJET/ avec génération de la database exhaustive.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Uniform Picker Field
             LaboPickerField(
@@ -325,7 +328,7 @@ private fun UnpackView(
                 testTag = "forge_unpack_picker_field"
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Project Name input
             OutlinedTextField(
@@ -346,12 +349,12 @@ private fun UnpackView(
 
             // Detected FS Info Badge
             if (detectedFsInfo != null) {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f))
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -359,18 +362,18 @@ private fun UnpackView(
                         imageVector = Icons.Default.Dataset,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(22.dp)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = "Format détecté : ${detectedFsInfo.format.uppercase()}",
+                            text = "Format : ${detectedFsInfo.format.uppercase()} (${if (detectedFsInfo.isSparse) "Sparse" else "Raw"})",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "Taille bloc : ${detectedFsInfo.blockSize} o | Magic : ${detectedFsInfo.magicHex}",
+                            text = "Bloc : ${detectedFsInfo.blockSize} o • Arch : ${detectedFsInfo.architecture} • Magic : ${detectedFsInfo.magicHex}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -403,29 +406,30 @@ private fun RepackView(
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     onSelectProject: (LaboProject) -> Unit,
+    repackOutputFolder: String,
     onStartRepack: () -> Unit,
     isRunning: Boolean,
     onOpenProject: (LaboProject) -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = CardDefaults.outlinedCardBorder()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = "Repackage d'un PROJET",
+                text = "Reconstruction d'Image (REPACK)",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "Reconstruit l'image selon le format d'origine et les métadonnées stockées dans database.",
+                text = "Reconstruit l'image selon database/ et PROJET/ vers sdcard/LABO/REPACK/.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             if (projectsList.isEmpty()) {
                 Box(
@@ -487,7 +491,7 @@ private fun RepackView(
 
                 // Project Details Card
                 selectedProject?.let { proj ->
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                     LaboCard(modifier = Modifier.fillMaxWidth()) {
                         Column {
                             Row(
@@ -506,37 +510,38 @@ private fun RepackView(
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
+                                        .clip(RoundedCornerShape(6.dp))
                                         .background(MaterialTheme.colorScheme.primaryContainer)
-                                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                                        .padding(horizontal = 8.dp, vertical = 2.dp),
                                     color = MaterialTheme.colorScheme.onPrimaryContainer
                                 )
                             }
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "Racine img : ${proj.imgExtractDir.name}/",
+                                text = "Source img : PROJET/${proj.name}/${proj.imgName}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = "Database : ${proj.databaseDir.exists().let { if (it) "Présente (fs_config, contexts)" else "Absente" }}",
+                                text = "Database : ${if (proj.databaseDir.exists()) "Exhaustive (fs_config, contexts, symlinks, xattrs)" else "Absente"}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = "Fichiers : ${proj.filesCount} éléments",
+                                text = "Destination : $repackOutputFolder/${proj.name}_repacked_${proj.fsType}.img",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 // Uniform Repack Button
                 LaboButton(
-                    text = "Repacker le projet sélectionné",
+                    text = "Lancer le REPACK",
                     onClick = onStartRepack,
                     icon = Icons.Default.Layers,
                     isLoading = isRunning,
@@ -563,12 +568,12 @@ private fun OperationConsole(opState: ForgeOperationState) {
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF0F172A)
+            containerColor = Color(0xFF070B12)
         ),
         modifier = Modifier
             .fillMaxWidth()
-            .height(220.dp)
-            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+            .height(200.dp)
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
     ) {
         Column(
             modifier = Modifier
@@ -584,16 +589,16 @@ private fun OperationConsole(opState: ForgeOperationState) {
                     Icon(
                         imageVector = Icons.Default.Terminal,
                         contentDescription = null,
-                        tint = Color(0xFF38BDF8),
+                        tint = Color(0xFF0A84FF),
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "CONSOLE FORGE",
+                        text = "CONSOLE FORGE v2",
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF38BDF8)
+                        color = Color(0xFF0A84FF)
                     )
                 }
                 if (opState.resultSuccess == true) {
@@ -601,7 +606,7 @@ private fun OperationConsole(opState: ForgeOperationState) {
                         Icon(
                             imageVector = Icons.Default.CheckCircle,
                             contentDescription = null,
-                            tint = Color(0xFF4ADE80),
+                            tint = Color(0xFF34C759),
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
@@ -609,25 +614,25 @@ private fun OperationConsole(opState: ForgeOperationState) {
                             text = "SUCCÈS",
                             style = MaterialTheme.typography.labelSmall,
                             fontFamily = FontFamily.Monospace,
-                            color = Color(0xFF4ADE80)
+                            color = Color(0xFF34C759)
                         )
                     }
                 }
             }
 
             if (opState.isRunning) {
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 LinearProgressIndicator(
                     progress = { opState.progress },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(3.dp),
-                    color = Color(0xFF38BDF8),
-                    trackColor = Color(0xFF1E293B)
+                    color = Color(0xFF0A84FF),
+                    trackColor = Color(0xFF141D2D)
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             LazyColumn(
                 state = listState,
@@ -641,8 +646,8 @@ private fun OperationConsole(opState: ForgeOperationState) {
                             lineHeight = 14.sp
                         ),
                         fontFamily = FontFamily.Monospace,
-                        color = if (logLine.contains("succès", ignoreCase = true)) Color(0xFF4ADE80)
-                        else if (logLine.contains("erreur", ignoreCase = true)) Color(0xFFF87171)
+                        color = if (logLine.contains("succès", ignoreCase = true)) Color(0xFF34C759)
+                        else if (logLine.contains("erreur", ignoreCase = true)) Color(0xFFFF453A)
                         else Color(0xFFE2E8F0)
                     )
                 }

@@ -34,13 +34,18 @@ import com.example.core.workspace.WorkspaceManager
 import com.example.feature.forge.ForgeScreen
 import com.example.feature.labx.LabxEngine
 import com.example.feature.labx.LabxScreen
+import com.example.ui.filemanager.FileManagerScreen
 import com.example.ui.home.HomeScreen
 import com.example.ui.theme.LaboTheme
+import com.example.ui.trash.TrashScreen
+import java.io.File
 
 sealed class AppScreen {
     object Home : AppScreen()
     object Forge : AppScreen()
     data class LabxDetail(val manifest: LabxManifest) : AppScreen()
+    data class FileManager(val dir: File, val title: String) : AppScreen()
+    object Trash : AppScreen()
 }
 
 class MainActivity : ComponentActivity() {
@@ -60,7 +65,7 @@ class MainActivity : ComponentActivity() {
             // Storage Permission Launcher
             val storagePermissionLauncher = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.RequestMultiplePermissions()
-            ) { /* Permissions result handled */ }
+            ) { /* Handled */ }
 
             LaunchedEffect(Unit) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -103,7 +108,11 @@ class MainActivity : ComponentActivity() {
                                     currentTheme = currentTheme,
                                     onThemeChange = { currentTheme = it },
                                     onOpenForge = { currentScreen = AppScreen.Forge },
-                                    onOpenLabx = { manifest -> currentScreen = AppScreen.LabxDetail(manifest) }
+                                    onOpenLabx = { manifest -> currentScreen = AppScreen.LabxDetail(manifest) },
+                                    onOpenFileManager = { dir, title ->
+                                        currentScreen = AppScreen.FileManager(dir, title)
+                                    },
+                                    onOpenTrash = { currentScreen = AppScreen.Trash }
                                 )
                             }
                             is AppScreen.Forge -> {
@@ -112,8 +121,11 @@ class MainActivity : ComponentActivity() {
                                 }
                                 ForgeScreen(
                                     workspaceManager = workspaceManager,
+                                    shellExecutor = shellExecutor,
                                     onNavigateBack = { currentScreen = AppScreen.Home },
-                                    onOpenProject = { /* project opened */ }
+                                    onOpenProject = { proj ->
+                                        currentScreen = AppScreen.FileManager(proj.rootDir, "Projet: ${proj.name}")
+                                    }
                                 )
                             }
                             is AppScreen.LabxDetail -> {
@@ -123,6 +135,26 @@ class MainActivity : ComponentActivity() {
                                 LabxScreen(
                                     manifest = screen.manifest,
                                     engine = labxEngine,
+                                    workspaceManager = workspaceManager,
+                                    onNavigateBack = { currentScreen = AppScreen.Home }
+                                )
+                            }
+                            is AppScreen.FileManager -> {
+                                BackHandler {
+                                    currentScreen = AppScreen.Home
+                                }
+                                FileManagerScreen(
+                                    initialDir = screen.dir,
+                                    title = screen.title,
+                                    workspaceManager = workspaceManager,
+                                    onNavigateBack = { currentScreen = AppScreen.Home }
+                                )
+                            }
+                            is AppScreen.Trash -> {
+                                BackHandler {
+                                    currentScreen = AppScreen.Home
+                                }
+                                TrashScreen(
                                     workspaceManager = workspaceManager,
                                     onNavigateBack = { currentScreen = AppScreen.Home }
                                 )

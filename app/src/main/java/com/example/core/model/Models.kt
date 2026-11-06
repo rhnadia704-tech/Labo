@@ -66,5 +66,40 @@ data class FileItem(
     val sizeBytes: Long,
     val formattedSize: String,
     val formattedDate: String,
-    val extension: String
+    val extension: String,
+    val isArchive: Boolean = false
+)
+
+enum class ClipboardAction {
+    COPY,
+    CUT
+}
+
+data class ClipboardItem(
+    val files: List<File>,
+    val action: ClipboardAction,
+    val fromArchiveFile: File? = null,
+    val archiveEntryPaths: List<String> = emptyList()
+)
+
+data class TrashItem(
+    val id: String,
+    val name: String,
+    val originalPath: String,
+    val trashFile: File,
+    val deletedTimestamp: Long,
+    val formattedDate: String,
+    val isDirectory: Boolean,
+    val sizeBytes: Long,
+    val formattedSize: String
+)
+
+data class ArchiveEntryItem(
+    val name: String,
+    val fullPath: String,
+    val isDirectory: Boolean,
+    val sizeBytes: Long,
+    val formattedSize: String,
+    val compressedSizeBytes: Long,
+    val lastModified: Long
 )

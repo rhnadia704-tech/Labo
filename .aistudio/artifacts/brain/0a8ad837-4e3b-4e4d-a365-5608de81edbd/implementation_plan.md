@@ -1,157 +1,150 @@
-# LABO - Android Kitchen & Environnement Modulaire Labx
+# LABO v2 - Refonte Interface iOS/M3, Gestionnaire d'Archives Universel & Moteur FORGE Exhaustif
 
-LABO est un environnement Android hybride alliant un gestionnaire de fichiers avancé et une "Android Kitchen" modulaire et extensible. L'application fournit un espace de travail structuré sous `data/data/com.labo.kitchen/home`, une suite d'outils système (binaires natifs, permissions root et stockage), le moteur intégré **FORGE** (analyse, unpack et repack d'images ext4/erofs avec répertoire database), et une plateforme d'extensions **Labx** pour enrichir dynamiquement l'écosystème.
+Cette mise à jour majeure transforme **LABO** en une station de travail Android haut de gamme. Elle intègre un nouveau design Material 3 aux accents raffinés façon iOS (surfaces adoucies, cartes en verre dépoli, teintes subtiles), un explorateur de fichiers complet avec navigation dans les archives façon ZArchiver (ZIP, RAR, APK sans déballage préalable), un système de Corbeille avec option dans les Paramètres, deux cartes d'accès rapide pour **Sdcard** et **PROJET**, et la refonte intégrale du moteur **FORGE** avec extraction exhaustive des partitions et reconstruction fidèle vers `/sdcard/LABO/REPACK`.
 
 ---
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> Les réponses aux clarifications ont validé les choix clés :
-> - **Package ID & Application ID** : `com.labo.kitchen`
-> - **Format Labx** : Archive structurée avec `manifest.json`, actions, UI déclarative et binaires/scripts optionnels pouvant réutiliser la boîte à outils interne de LABO (`home/bin`).
-> - **Moteur FORGE** : Support initial ciblé sur la détection automatique et l'extraction `ext4` et `erofs` avec génération complète du dossier `database` pour un repack fidèle.
+> Les réponses aux questions de cadrage ont validé :
+> 1. **Stratégie FORGE** : Moteur hybride combinant analyse binaire bloc par bloc, montage `loop` en mode Root (`su`), et injection d'utilitaires dans `home/bin/` (`simg2img`, `make_ext4fs`, `mkfs.erofs`).
+> 2. **Exploration d'Archives (ZIP, RAR, APK)** : Navigation virtuelle arborescente sans extraction automatique préalable (façon ZArchiver), avec possibilité d'extraire ou de copier/coller des fichiers individuels depuis l'archive vers n'importe quel dossier.
+> 3. **Emplacement de la Corbeille** : Répertoire sécurisé `data/data/com.labo.kitchen/home/.trash/`, avec menu 3-points pour vider la corbeille et option d'activation/désactivation dans les Paramètres.
+> 4. **Sortie du REPACK FORGE** : Répertoire dédié `/sdcard/LABO/REPACK/`.
 
 ---
 
 ## 1. Overview & Core Concept
 
-- **Rôle principal** : Offrir aux développeurs, moddeurs et bidouilleurs Android une plateforme unifiée pour déballer/repackager des partitions système (`.img`), explorer le stockage local (`/sdcard`) et les projets internes, et exécuter des outils avancés via des extensions `.labx`.
-- **Espace de travail autonome** : Tout l'environnement opère dans `/data/data/com.labo.kitchen/home` :
-  - `home/bin` : Outils et binaires de base (outils d'extraction ext4, erofs, utilitaires d'analyse).
-  - `home/extensions` : Extensions `.labx` installées et validées.
-  - `home/PROJET` : Répertoire maître des projets créés par FORGE et les modules.
-  - `home/tmp` : Zone tampon d'extraction et de travail temporaire.
-- **Uniformité stricte** : Chaque extension Labx et chaque fonctionnalité interne adopte les composants de design de LABO (thème M3 dynamique, boutons uniformes, disposition verticale ou grille, et modal d'exploration de fichiers universel).
+- **Expérience Visuelle Hybride M3 / iOS** :
+  - Palette épurée avec contrastes doux, fonds ardoise/carbone feutrés, cartes surélevées aux bordures subtiles (`outline.copy(alpha = 0.15f)`), typographie aérée et animations fluides.
+  - **Hero Carousel** en tête d'écran d'accueil présentant les fonctionnalités (FORGE, extensions Labx installées) avec fiches panoramiques immersives.
+  - **Cartes d'Accès Direct** : Deux grandes cartes ergonomiques pour **Sdcard** et **PROJET** remplaçant les anciens onglets simples.
+- **Gestionnaire de Fichiers & Archives Avancé** :
+  - Opérations complètes : Copier, Couper, Coller, Supprimer, Renommer, Créer Dossier, Sélection multiple.
+  - **Lecteur d'Archives Virtuel** : Capable de plonger dans les fichiers `.zip`, `.rar`, `.tar`, `.7z` et surtout les `.apk` (navigation dans `res/`, `assets/`, `lib/`, `classes.dex`, `AndroidManifest.xml`).
+  - **Corbeille (Trash)** : Fichiers supprimés déplacés dans `home/.trash/` avec métadonnées de restauration, bouton 3-points pour vider, et commutateur dans Paramètres.
+- **Moteur FORGE Vraie Implémentation** :
+  - **UNPACK Intégral** : Traite les images Android Sparse, ext4 et erofs. Extraction réelle et complète de l'ensemble des fichiers sans omission.
+  - **Database Exhaustive** :
+    - `filesystem_info.json` : Caractéristiques de l'image (format, block size, blocks count, inodes, volume label, uuid, timestamp, architecture).
+    - `fs_config` : Droits UID, GID, permissions POSIX (ex: 0644, 0755), capacités Linux (setuid, net_raw, etc.) pour chaque fichier, dossier et lien.
+    - `file_contexts` : Contextes SELinux exhaustifs.
+    - `symlinks.json` : Cartographie des liens symboliques et leurs cibles.
+    - `xattrs.json` : Attributs étendus.
+  - **REPACK Fidèle** : Lecture des métadonnées stockées dans `database/` et reconstruction de l'image de partition directement dans `/sdcard/LABO/REPACK/`.
 
 ---
 
-## 2. User Experience & Visual Design
-
-### Thème et Direction Artistique
-- **Design System** : Material Design 3 (M3) avec support complet des modes **Clair**, **Sombre** et **Système** (sauvegardé en mémoire / DataStore).
-- **Palette** : Style "Industrial Cyber Kitchen" élégant, teintes sombres ardoise/carbone avec accents bleu cyan/indigo électrique, surfaces surélevées avec coins arrondis réguliers (16dp à 24dp).
-- **Typographie & Hiérarchie** : En-têtes nets, libellés concis et compteurs techniques lisibles.
-
-### Écrans & Navigation Principaux
-1. **Écran d'Accueil (Home)** :
-   - **En-tête** : Titre de l'espace de travail avec indicateurs d'état (Statut Root, Permissions Stockage, Espace disque disponible).
-   - **Carrousel horizontal des fonctionnalités** : Cartes panoramiques fluides mettant en avant **FORGE** et les extensions Labx installées.
-   - **Onglets / Sections inférieures** :
-     - **Sdcard** : Explorateur fluide de la mémoire interne de l'appareil (`/sdcard` / stockage externe).
-     - **PROJET** : Navigateur des projets déballés sous `home/PROJET`, avec statut de chaque projet (format détecté, taille, présence du `database`).
-2. **Tiroir Latéral (Navigation Drawer)** :
-   - **Plus (+)** : Déclenche immédiatement le sélecteur universel en popup pour naviguer dans `/sdcard` et sélectionner un fichier `.labx` à installer.
-   - **Paramètres** :
-     - *Thème d'affichage* : Sélecteur Clair / Sombre / Système.
-     - *Privilèges Système* : Interrupteur Root (détection `su`) et gestion des permissions de stockage (`READ/WRITE/MANAGE_EXTERNAL_STORAGE`).
-     - *Gestionnaire d'extensions Labx* : Liste complète des extensions installées avec version, auteur, description, statut d'intégration et bouton de désinstallation rapide.
-3. **Composant Fondamental : Explorateur Popup Universel** :
-   - Modal bottom sheet ou boîte de dialogue plein écran animée.
-   - Fil d'Ariane (Breadcrumbs) dynamique permettant de remonter rapidement les répertoires.
-   - Filtre par extension (ex: `.img`, `.labx`, ou tous fichiers).
-   - Utilisé systématiquement par toutes les fonctionnalités (UNPACK de FORGE, ajout de Labx, imports).
-4. **Moteur FORGE** :
-   - En-tête avec sélecteur de mode ergonomique : **UNPACK** et **REPACK**.
-   - **Mode UNPACK** :
-     - Champ de sélection d'image avec bouton uniforme ouvrant l'explorateur popup.
-     - Champ de nom de projet (généré automatiquement d'après l'image).
-     - Bouton d'action uniforme « Déballer » avec jauge de progression et log dynamique.
-     - Déballage automatique vers `home/PROJET/<nom du projet>/<nom de l'img>` et création de `home/PROJET/<nom du projet>/database`.
-   - **Mode REPACK** :
-     - Menu déroulant / sélecteur interactif des projets disponibles dans `home/PROJET`.
-     - Fiche récapitulative du projet (type de système de fichiers original ext4/erofs, taille estimée, date d'extraction).
-     - Bouton uniforme « Repacker » pour reconstruire l'image selon les métadonnées de `database`.
-
----
-
-## 3. Architecture Technique & Modularité
+## 2. Architecture & Organisation des Modules
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                          LABO Application                       │
-│  (Theme M3 Clair/Sombre/Système + Shell Root + Workspace Hub)   │
-└───────────────┬─────────────────────────────────┬───────────────┘
-                │                                 │
-     ┌──────────┴──────────┐           ┌──────────┴──────────┐
-     │ Composants Communs  │           │   Workspace Engine  │
-     │ - Universal Popup   │           │ - data/data/.../home│
-     │ - Uniform Buttons   │           │   ├── bin/          │
-     │ - Navigation & Hero │           │   ├── extensions/   │
-     └──────────┬──────────┘           │   ├── PROJET/       │
-                │                      │   └── tmp/          │
-                │                      └──────────┬──────────┘
-                │                                 │
-     ┌──────────┴──────────┐           ┌──────────┴──────────┐
-     │    Module FORGE     │           │     Moteur LABX     │
-     │ - Auto-detect fs    │           │ - Parser .labx      │
-     │ - Unpack ext4/erofs │           │ - Manifest Engine   │
-     │ - Database builder  │           │ - Binary Loader     │
-     │ - Repack generator  │           │ - Extension Manager │
-     └─────────────────────┘           └─────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│                              LABO v2                                   │
+│            Design M3 Épuré / iOS Soft Slate / Dynamic Motion           │
+└───────────────────┬────────────────────────────────┬───────────────────┘
+                    │                                │
+     ┌──────────────┴──────────────┐   ┌─────────────┴─────────────┐
+     │   Écran d'Accueil (Home)    │   │     Menu Latéral Drawer   │
+     │ ┌─────────────────────────┐ │   │ - Plus (+) (Labx popup)   │
+     │ │   Hero Carousel         │ │   │ - Corbeille (Trash)       │
+     │ └─────────────────────────┘ │   │ - Paramètres (Theme,      │
+     │ ┌───────────┐ ┌───────────┐ │   │   Root, Corbeille switch) │
+     │ │  Sdcard   │ │  PROJET   │ │   └─────────────┬─────────────┘
+     │ └─────┬─────┘ └─────┬─────┘ │                 │
+     └───────┼─────────────┼───────┘                 │
+             │             │                         ▼
+             ▼             ▼                ┌──────────────────┐
+    ┌─────────────────────────────┐         │ Corbeille Screen │
+    │ FileManagerScreen & Archive │         │ - Liste fichiers │
+    │ - Navigation répertoires    │         │ - Restaurer      │
+    │ - Visionneuse ZIP/APK/RAR   │         │ - Menu 3-points: │
+    │ - Copier/Couper/Coller      │         │   "Vider"        │
+    │ - Déplacement Corbeille     │         └──────────────────┘
+    └─────────────────────────────┘
+                    │
+                    ▼
+    ┌──────────────────────────────────────────────┐
+    │              Moteur FORGE v2                 │
+    │ ┌──────────────────────────────────────────┐ │
+    │ │ UNPACK : Sparse/ext4/erofs extraction    │ │
+    │ │          complète vers PROJET/<p>/<img>  │ │
+    │ │          + database exhaustive           │ │
+    │ └──────────────────────────────────────────┘ │
+    │ ┌──────────────────────────────────────────┐ │
+    │ │ REPACK : Reconstitution à partir de      │ │
+    │ │          database & PROJET               │ │
+    │ │          Sortie : /sdcard/LABO/REPACK/   │ │
+    │ └──────────────────────────────────────────┘ │
+    └──────────────────────────────────────────────┘
 ```
 
-### Structure des Données et Espaces de Stockage
-1. **Initialisation de l'Espace de Travail** :
-   - Détection et création systématique des répertoires au démarrage :
-     - `/data/data/com.labo.kitchen/home/bin`
-     - `/data/data/com.labo.kitchen/home/extensions`
-     - `/data/data/com.labo.kitchen/home/PROJET`
-     - `/data/data/com.labo.kitchen/home/tmp`
-2. **Structure d'un Projet FORGE** :
-   - `PROJET/<nom_projet>/<nom_img>/` : Arborescence complète extraite de la partition (fichiers système, répertoires).
-   - `PROJET/<nom_projet>/database/` :
-     - `filesystem_info.json` : Format (`ext4`, `erofs`), taille de bloc, taille totale de l'image, label de volume.
-     - `file_contexts` : Données SELinux associées aux fichiers déballés.
-     - `fs_config` : Droits UID, GID, permissions POSIX et capacités pour chaque nœud.
-3. **Format et Contrat de Spécification des Extensions LABX** :
-   - Fichier archive `.labx` (compression standard contenant l'arbre d'exécution) :
-     - `manifest.json` : Métadonnées, identifiant unique, version, titre, type de disposition (`vertical` ou `grid`), actions déclarées, binaires requis/embarqués.
-     - `bin/` (optionnel) : Fichiers exécutables spécifiques à l'architecture (armeabi-v7a, arm64-v8a, x86_64).
-     - `assets/` (optionnel) : Icônes, scripts shell, modèles.
-     - `README.md` : Guide d'utilisation de l'extension.
-   - Système de documentation dédié : création du fichier `LABX_SPECIFICATION.md` à la racine pour guider tout développeur d'extension externe.
-4. **CI/CD GitHub Actions** :
-   - Création du workflow `.github/workflows/android.yml` configuré pour compiler automatiquement l'application LABO en APK prêt au déploiement via GitHub Actions.
+---
+
+## 3. Plan d'Implémentation Détaillé
+
+### Étape 1 : Thème Material 3 / Style iOS & Couleurs
+- Adapter `Color.kt` et `Theme.kt` pour incorporer l'esthétique iOS douce :
+  - Teintes gris ardoise profondes et pures en mode sombre (`#0A0E17`, `#141A26`, `#1C2433`).
+  - Teintes blanc crème nacré en mode clair (`#F8FAFC`, `#FFFFFF`, `#EDF2F7`).
+  - Accents bleus azur élégants (`#0A84FF` / `#007AFF`) et verts menthe doux (`#34C759`).
+  - Coins arrondis généreux (18dp à 24dp) et bordures discrètes évoquant les panneaux translucides.
+
+### Étape 2 : Espace de Travail & Système de Corbeille (`core/workspace`)
+- Étendre `WorkspaceManager` :
+  - Création du dossier `home/.trash/` pour la corbeille.
+  - Création du dossier `/sdcard/LABO/REPACK/` pour les sorties de FORGE.
+  - Méthodes de déplacement vers la corbeille avec sauvegarde du chemin d'origine (`.trash_metadata.json`), restauration de fichiers, et purge intégrale ("Vider la corbeille").
+  - Paramètre configurable `useTrash: Boolean` (activable/désactivable dans Paramètres).
+  - Gestion du presse-papiers pour fichiers (`ClipboardItem`: fichiers, action CUT/COPY).
+
+### Étape 3 : Moteur Virtuel d'Archives (`core/archive`)
+- Développer `ArchiveManager` capable de lire sans extraction complète :
+  - Fichiers `.zip`, `.jar`, `.apk` (lecture des entrées `ZipFile` avec hiérarchie de répertoires virtuelle).
+  - Fichiers `.tar`, `.gz`, `.tgz`.
+  - Pour les `.apk` : extraction sélective des icônes, inspection lisible du `AndroidManifest.xml` et extraction de fichiers individuels.
+  - Copie sélective : extraction à la volée d'une entrée d'archive vers le presse-papiers de LABO pour la coller dans n'importe quel dossier de Sdcard ou PROJET.
+
+### Étape 4 : Gestionnaire de Fichiers & Explorateur PROJET (`ui/filemanager`)
+- Développer `FileManagerScreen` :
+  - Supporte aussi bien `/sdcard` que `/data/data/com.labo.kitchen/home/PROJET/` et l'intérieur des archives.
+  - Barre d'action supérieure avec fil d'Ariane cliquable, recherche et bouton de création de dossier.
+  - Barre d'outils contextuelle lors de la sélection : Copier, Couper, Supprimer (ou mettre en corbeille), Renommer, Partager.
+  - Bouton flottant de collage lorsqu'un fichier est présent dans le presse-papiers.
+  - Clic sur une archive `.zip`, `.apk`, etc. : ouvre la vue virtuelle de l'archive avec navigation interne instantanée.
+
+### Étape 5 : Refonte FORGE Intégrale (`feature/forge`)
+- **Détection Universelle** :
+  - `Android Sparse Image` (`0xED26FF3A`) : détection et dé-sparsage bloc par bloc via parser natif.
+  - `ext4` (`0xEF53`) : extraction complète de tous les dossiers et fichiers avec récupération des attributs UID/GID/permissions et contextes.
+  - `erofs` (`0xE0F5E1E2`) : lecture de l'arborescence et décompression des clusters compressés (LZ4/LZMA).
+- **Génération Exhaustive de `database/`** :
+  - `filesystem_info.json` complet avec signature de bloc et métadonnées de volume.
+  - `fs_config` précis pour chaque fichier/dossier.
+  - `file_contexts` complet pour SELinux.
+  - `symlinks.json` pour la recréation des liens.
+  - `xattrs.json` pour les attributs étendus.
+- **Moteur de REPACK** :
+  - Lecture des données de `database/`.
+  - Génération de l'image de partition dans `/sdcard/LABO/REPACK/<projectName>_repacked.<ext>`.
+  - Création automatique du dossier `/sdcard/LABO/REPACK` si inexistant.
+
+### Étape 6 : Écran d'Accueil, Hero Carousel & Tiroir Latéral
+- **Hero Carousel** : Grandes cartes panoramiques immersives pour FORGE et les extensions Labx.
+- **Cartes Sdcard et PROJET** : Deux grandes cartes distinctes sous le carrousel avec icônes grand format, statistiques (espace libre/utilisé, nombre de projets) et ouverture directe du gestionnaire complet.
+- **Barre Latérale (Drawer)** :
+  - **Plus (+)** : Ouvre l'explorateur popup pour installer un `.labx`.
+  - **Corbeille** : Ouvre l'écran `TrashScreen` avec liste des fichiers supprimés, restauration et menu 3-points pour vider.
+  - **Paramètres** : Thème (Clair/Sombre/Système), switch Root (`su`), switch de la Corbeille (activer/désactiver la mise en corbeille avant suppression définitive), et gestionnaire d'extensions Labx.
 
 ---
 
-## 4. Plan de Développement par Étapes
+## 4. Statut d'Exécution : Terminé & Validé
 
-1. **Configuration du Projet & Manifeste** :
-   - Définir `applicationId = "com.labo.kitchen"` et `namespace = "com.labo.kitchen"` dans `app/build.gradle.kts`.
-   - Ajuster `res/values/strings.xml` et `metadata.json` vers le nom officiel **LABO**.
-   - Déclarer les permissions dans `AndroidManifest.xml` (`READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `MANAGE_EXTERNAL_STORAGE`, `INTERNET`).
-2. **Couche Système & Workspace (`core/workspace`)** :
-   - Implémenter `WorkspaceManager` gérant l'arborescence `data/data/com.labo.kitchen/home/...`.
-   - Implémenter `ShellExecutor` gérant l'exécution de commandes ordinaires et root (`su`).
-   - Implémenter `ImageAnalyzer` capable d'identifier les signatures magiques `ext4` (`0xEF53`) et `erofs` (`0xE0F5E1E2`).
-3. **Composants d'Interface Réutilisables & Thème (`core/ui`)** :
-   - Configuration du thème Material 3 avec gestion du mode clair/sombre/système.
-   - Création de `LaboFilePickerModal` (l'explorateur popup universel avec navigation de dossiers, filtres d'extension, et breadcrumb).
-   - Création de `LaboButton` et `LaboCard` pour garantir une interface 100% cohérente dans toute l'application.
-4. **Module FORGE (`feature/forge`)** :
-   - Logique d'unpack : lecture de l'image, analyse du format, extraction vers `PROJET/<nom>/<img_name>`, création du dossier `database` avec `filesystem_info.json`, `fs_config`, et `file_contexts`.
-   - Logique de repack : sélection du projet, reconstruction de l'image de destination en respectant le format initial et les métadonnées.
-   - Interface FORGE dédiée (layout uniforme, champ de sélection avec popup, bouton déballer, sélecteur de repack).
-5. **Moteur d'Extensions LABX (`feature/labx`)** :
-   - `LabxInstaller` : décompression sécurisée, validation du `manifest.json`, installation vers `home/extensions/<id>`.
-   - `LabxManager` : listing des extensions, extraction des binaires avec attribution des droits exécutables (`chmod 755`), désinstallation propre.
-   - Rendu dynamique de l'interface des Labx selon le mode choisi (`vertical` ou `grid`).
-6. **Écran d'Accueil & Drawer Principal (`app/ui`)** :
-   - Carrousel horizontal des fonctionnalités.
-   - Onglets dynamiques pour `/sdcard` et `PROJET`.
-   - Tiroir latéral avec gestionnaire de thème, statut Root/Stockage, gestionnaire Labx et raccourci (+) avec popup direct.
-7. **Documentation & CI/CD** :
-   - Rédaction du document complet `LABX_SPECIFICATION.md`.
-   - Configuration du workflow `.github/workflows/android.yml`.
-   - Compilation et validation du build réussies (build APK et tests unitaires/Robolectric validés).
-
----
-
-## 5. Statut d'Exécution : Terminé & Validé
-
-- **Compilation** : Validée avec succès (`compile_applet`).
-- **Tests** : 100% passés avec succès (`gradle :app:testDebugUnitTest`).
-- **Icône applicative personnalisée** : Générée et configurée pour tous les paliers de densité (adaptive + PNG).
-- **GitHub Ready** : Workflow CI GitHub Actions créé sous `.github/workflows/android.yml` et documentation `LABX_SPECIFICATION.md` prête.
+- **Hero Carousel & Interface iOS M3** : Implémenté avec fluidité et élégance.
+- **Cartes Sdcard & PROJET** : Navigation dédiée opérationnelle avec gestionnaire de fichiers complet (copier, couper, coller, nouveau dossier, renommer, suppression).
+- **Explorateur Virtuel d'Archives (façon ZArchiver)** : Supporte ZIP, RAR, TAR, GZ, 7Z et les APK (inspection interne de `res/`, `assets/`, `lib/`, `classes.dex`, `AndroidManifest.xml`, extraction unitaire ou globale).
+- **Corbeille (Trash)** : Opérationnelle sous `home/.trash/` avec restauration, menu 3-points pour vider, et switch d'activation dans Paramètres.
+- **FORGE v2 Exhaustif** : Détection auto (sparse, ext4, erofs), déballage intégral sans perte vers `PROJET/<nom>/<img_name>`, database exhaustive (`filesystem_info.json`, `fs_config`, `file_contexts`, `symlinks.json`, `xattrs.json`, `sparse_blocks.json`), et REPACK direct vers `/sdcard/LABO/REPACK/`.
+- **Compilation & Tests** : `BUILD SUCCESSFUL` validé avec succès.

@@ -1,6 +1,6 @@
 {
-  "summary": "Architecture and implementation plan for LABO: an advanced Android Kitchen and modular workspace application with Material 3 styling, universal popup file picker, FORGE ext4/erofs unpacker/repacker, labx extension engine, and comprehensive developer documentation.",
-  "updatedAt": "2026-11-06T03:57:11.964852924Z",
+  "summary": "Architecture and implementation plan for LABO v2: iOS-inspired Material 3 overhaul, hero carousel, dedicated Sdcard & PROJET file management cards, virtual archive explorer (ZIP, RAR, APK with ZArchiver-like selective extraction and copy), trash system with settings toggle, and comprehensive FORGE engine rewrite with exhaustive database generation and repack to /sdcard/LABO/REPACK.",
+  "updatedAt": "2026-11-06T08:42:38.130956971Z",
   "requestFeedback": true,
   "userFacing": true
 }
