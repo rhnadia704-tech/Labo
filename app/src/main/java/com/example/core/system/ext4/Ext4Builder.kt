@@ -342,10 +342,12 @@ class Ext4Builder(
             sbBuf.putShort(56, 0xEF53.toShort())      // s_magic = 0xEF53 (VALID EXT4!)
             sbBuf.putShort(58, 1.toShort())           // s_state (clean)
             sbBuf.putShort(60, 1.toShort())           // s_errors (continue)
-            sbBuf.putShort(68, 1.toShort())           // s_rev_level = EXT4_DYNAMIC_REV
-            sbBuf.putShort(88, INODE_SIZE.toShort())  // s_inode_size = 256
-            sbBuf.putInt(96, 0x240)                   // s_feature_incompat (FILETYPE | EXTENTS)
-            sbBuf.putInt(100, 0x3)                    // s_feature_ro_compat (SPARSE_SUPER | LARGE_FILE)
+            sbBuf.putInt(76, 1)                       // s_rev_level = EXT4_DYNAMIC_REV (offset 0x4C = 76)
+            sbBuf.putInt(84, 11)                      // s_first_ino = 11 (offset 0x54 = 84)
+            sbBuf.putShort(88, INODE_SIZE.toShort())  // s_inode_size = 256 (offset 0x58 = 88)
+            sbBuf.putInt(92, 0)                       // s_feature_compat (offset 0x5C = 92)
+            sbBuf.putInt(96, 0x240)                   // s_feature_incompat (FILETYPE | EXTENTS) (offset 0x60 = 96)
+            sbBuf.putInt(100, 0x3)                    // s_feature_ro_compat (SPARSE_SUPER | LARGE_FILE) (offset 0x64 = 100)
 
             // Volume label (offset 120, 16 bytes)
             val labelBytes = volumeLabel.take(15).toByteArray(Charsets.UTF_8)

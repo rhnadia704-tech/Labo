@@ -1,6 +1,6 @@
 {
-  "summary": "Architecture and implementation plan for LABO v2: iOS-inspired Material 3 overhaul, hero carousel, dedicated Sdcard & PROJET file management cards, virtual archive explorer (ZIP, RAR, APK with ZArchiver-like selective extraction and copy), trash system with settings toggle, and comprehensive FORGE engine rewrite with exhaustive database generation and repack to /sdcard/LABO/REPACK.",
-  "updatedAt": "2026-11-06T08:42:38.130956971Z",
+  "summary": "Plan d'architecture et de refonte intégrale pour un UNPACK et REPACK fidèles au reflet de l'image originale dans FORGE de LABO. Intègre la détection automatique, le triple moteur (outils natifs AOSP, moteur autonome Kotlin multi-groupes, montage loop Root), et la persistance exacte de l'arborescence dans PROJET/ et database/.",
+  "updatedAt": "2026-11-06T15:18:58.006190792Z",
   "requestFeedback": true,
   "userFacing": true
 }

@@ -170,6 +170,22 @@ class Ext4Extractor(private val imageFile: File) : AutoCloseable {
                     result.add(Extent(i.toLong(), 1, blockNum))
                 }
             }
+            // Single indirect block at index 12 (offset 48)
+            val indirectBlock = buf.getInt(12 * 4).toLong() and 0xFFFFFFFFL
+            if (indirectBlock != 0L) {
+                try {
+                    val indBuf = ByteArray(blockSize)
+                    raf.seek(indirectBlock * blockSize)
+                    raf.readFully(indBuf)
+                    val indWrapped = ByteBuffer.wrap(indBuf).order(ByteOrder.LITTLE_ENDIAN)
+                    for (j in 0 until (blockSize / 4)) {
+                        val blk = indWrapped.getInt(j * 4).toLong() and 0xFFFFFFFFL
+                        if (blk != 0L) {
+                            result.add(Extent((12 + j).toLong(), 1, blk))
+                        }
+                    }
+                } catch (ignored: Exception) {}
+            }
             return result
         }
 

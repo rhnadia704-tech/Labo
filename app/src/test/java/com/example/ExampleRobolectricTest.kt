@@ -113,8 +113,10 @@ class ExampleRobolectricTest {
     // Create realistic system tree
     val binDir = File(srcDir, "bin").apply { mkdirs() }
     val etcDir = File(srcDir, "etc").apply { mkdirs() }
+    val appDir = File(srcDir, "system/app").apply { mkdirs() }
     val shFile = File(binDir, "sh").apply { writeText("#!/system/bin/sh\necho Hello LABO\n") }
     val propFile = File(etcDir, "build.prop").apply { writeText("ro.build.version.release=15\nro.product.model=LABO-GSI\n") }
+    val apkFile = File(appDir, "DummyApp.apk").apply { writeText("DUMMY_APK_DATA_FOR_LABO_TESTING") }
 
     val builder = com.example.core.system.ext4.Ext4Builder(
       sourceDir = srcDir,
@@ -126,13 +128,26 @@ class ExampleRobolectricTest {
     assertTrue(outImg.exists())
     assertTrue(imageSize > 0)
 
-    // Verify EXT4 superblock magic (0xEF53 at offset 1080)
+    // Verify EXT4 superblock magic (0xEF53 at offset 1080) and standard geometry
     java.io.RandomAccessFile(outImg, "r").use { raf ->
       raf.seek(1080L)
       val magicLow = raf.read()
       val magicHigh = raf.read()
       val magic = (magicHigh shl 8) or magicLow
       assertEquals(0xEF53, magic)
+
+      // Verify blocks_per_group is 32768 (offset 1024 + 32 = 1056)
+      val buf32 = ByteArray(4)
+      raf.seek(1056L)
+      raf.readFully(buf32)
+      val blocksPerGroup = java.nio.ByteBuffer.wrap(buf32).order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt()
+      assertEquals(32768, blocksPerGroup)
+
+      // Verify rev_level is 1 (EXT4_DYNAMIC_REV) at offset 1024 + 76 = 1100
+      raf.seek(1100L)
+      raf.readFully(buf32)
+      val revLevel = java.nio.ByteBuffer.wrap(buf32).order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt()
+      assertEquals(1, revLevel)
     }
 
     // Now extract with Ext4Extractor
@@ -140,13 +155,16 @@ class ExampleRobolectricTest {
     val extractedCount = extractor.extractAll(extractDir) { _, _ -> }
     extractor.close()
 
-    assertTrue(extractedCount >= 2)
+    assertTrue(extractedCount >= 3)
     val extractedSh = File(extractDir, "bin/sh")
     val extractedProp = File(extractDir, "etc/build.prop")
+    val extractedApk = File(extractDir, "system/app/DummyApp.apk")
 
     assertTrue("bin/sh should exist", extractedSh.exists())
     assertTrue("etc/build.prop should exist", extractedProp.exists())
+    assertTrue("system/app/DummyApp.apk should exist", extractedApk.exists())
     assertEquals(shFile.readText(), extractedSh.readText())
     assertEquals(propFile.readText(), extractedProp.readText())
+    assertEquals(apkFile.readText(), extractedApk.readText())
   }
 }

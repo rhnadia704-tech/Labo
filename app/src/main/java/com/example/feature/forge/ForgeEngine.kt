@@ -130,7 +130,39 @@ class ForgeEngine(
             }
         }
 
-        // Tentative B: Extracteur EXT4 binaire autonome (fonctionne sur tout appareil sans root)
+        // Tentative B: Extraction via debugfs si présent dans l'environnement ou les binaires LABO
+        if (!extractionComplete) {
+            val debugfsBin = listOf(
+                File(workspaceManager.binDir, "debugfs").absolutePath,
+                "/system/bin/debugfs",
+                "/system/xbin/debugfs",
+                "/vendor/bin/debugfs",
+                "/usr/sbin/debugfs"
+            ).firstOrNull { binPath ->
+                try {
+                    val f = File(binPath)
+                    f.exists() && f.canExecute()
+                } catch (_: Exception) { false }
+            }
+
+            if (debugfsBin != null) {
+                try {
+                    log("Extraction via l'outil natif debugfs ($debugfsBin)...", 0.49f)
+                    val rdumpCmd = "$debugfsBin -R 'rdump / \"${imgExtractionDir.absolutePath}\"' \"${effectiveRawFile.absolutePath}\""
+                    val res = shellExecutor.executeCommand(rdumpCmd)
+                    val count = countNodes(imgExtractionDir)
+                    if (count > 5) {
+                        extractedFilesCount = count
+                        extractionComplete = true
+                        log("Extraction debugfs réussie : $count nœuds extraits fidèlement !", 0.78f)
+                    }
+                } catch (e: Exception) {
+                    log("debugfs indisponible (${e.message}), bascule vers Ext4Extractor autonome...", 0.50f)
+                }
+            }
+        }
+
+        // Tentative C: Extracteur EXT4 binaire autonome (fonctionne sur tout appareil sans root)
         if (!extractionComplete) {
             try {
                 log("Analyse des superblocs, descripteurs de groupes et tables d'inodes EXT4...", 0.50f)
